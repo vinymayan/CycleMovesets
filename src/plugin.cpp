@@ -42,45 +42,37 @@ namespace GlobalControl {
 
         // Reenviamos os prompts para a API para que ela continue a escutar por futuras pressões.
         // Algumas APIs consomem o prompt após o uso, então esta é uma boa prática.
-        SkyPromptAPI::SendPrompt(this, g_clientID);
+        if (!SkyPromptAPI::SendPrompt(this, g_clientID)){
+        }
     }
 
-    // Função que inicializa nosso sistema
-    void Initialize() {
-        // Usamos o sistema de mensagens do SKSE para esperar o jogo carregar todos os dados (arquivos .esp)
-        auto* message = SKSE::GetMessagingInterface();
-        message->RegisterListener([](SKSE::MessagingInterface::Message* msg) {
-            if (msg->type == SKSE::MessagingInterface::kDataLoaded) {
-                // 1. Encontrar a variável global
-                g_targetGlobal = RE::TESForm::LookupByEditorID<RE::TESGlobal>(GLOBAL_EDITOR_ID);
-                if (!g_targetGlobal) {
-                    SKSE::log::critical("Nao foi possivel encontrar a Variavel Global com EditorID: {}",
-                                        GLOBAL_EDITOR_ID);
-                    return;
-                }
-                SKSE::log::info("Variavel Global '{}' encontrada com sucesso.", GLOBAL_EDITOR_ID);
-
-                // 2. Requisitar um ClientID da API SkyPrompt
-                g_clientID = SkyPromptAPI::RequestClientID();
-                if (g_clientID > 0) {
-                    SKSE::log::info("ClientID {} recebido da SkyPromptAPI.", g_clientID);
-                    // 3. Enviar nossos prompts para a API começar a monitorar as teclas
-                    if (SkyPromptAPI::SendPrompt(Sink::GetSingleton(), g_clientID)) {
-                        SKSE::log::info("Prompts de tecla registrados com sucesso!");
-                    } else {
-                        SKSE::log::error("Falha ao registrar os prompts de tecla na SkyPromptAPI.");
-                    }
-                } else {
-                    SKSE::log::error("Falha ao obter um ClientID da SkyPromptAPI. A API esta instalada?");
-                }
-            }
-        });
-    }
 }
 
 void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
         // Start
+        // 1. Encontrar a variável global
+        GlobalControl::g_targetGlobal = RE::TESForm::LookupByEditorID<RE::TESGlobal>(GlobalControl::GLOBAL_EDITOR_ID);
+        if (!GlobalControl::g_targetGlobal) {
+            SKSE::log::critical("Nao foi possivel encontrar a Variavel Global com EditorID: {}",
+                                GlobalControl::GLOBAL_EDITOR_ID);
+            return;
+        }
+        SKSE::log::info("Variavel Global '{}' encontrada com sucesso.", GlobalControl::GLOBAL_EDITOR_ID);
+
+        // 2. Requisitar um ClientID da API SkyPrompt
+        GlobalControl::g_clientID = SkyPromptAPI::RequestClientID();
+        if (GlobalControl::g_clientID > 0) {
+            SKSE::log::info("ClientID {} recebido da SkyPromptAPI.", GlobalControl::g_clientID);
+            // 3. Enviar nossos prompts para a API começar a monitorar as teclas
+            if (SkyPromptAPI::SendPrompt(GlobalControl::Sink::GetSingleton(), GlobalControl::g_clientID)) {
+                SKSE::log::info("Prompts de tecla registrados com sucesso!");
+            } else {
+                SKSE::log::error("Falha ao registrar os prompts de tecla na SkyPromptAPI.");
+            }
+        } else {
+            SKSE::log::error("Falha ao obter um ClientID da SkyPromptAPI. A API esta instalada?");
+        }
     }
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
         // Post-load
@@ -93,8 +85,6 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     logger::info("Plugin loaded");
     SKSE::Init(skse);
     SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
-
-    GlobalControl::Initialize();
 
     return true;
 }
