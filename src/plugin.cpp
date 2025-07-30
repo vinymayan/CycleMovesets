@@ -20,7 +20,7 @@ namespace GlobalControl {
         }
 
         // Usamos o ActionID que definimos nos prompts para decidir o que fazer
-        switch (event.prompt.actionID) {
+        switch (event.prompt.eventID) {
             case 0:  // Incrementar (Tecla U)
                 g_targetGlobal->value += 1.0f;
                 SKSE::log::info("Variavel Global incrementada para: {}", g_targetGlobal->value);
