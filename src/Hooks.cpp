@@ -1,4 +1,4 @@
-#include <format>
+﻿#include <format>
 #include <fstream>
 #include <string>
 
@@ -14,19 +14,40 @@ AnimationManager& AnimationManager::GetSingleton() {
     return instance;
 }
 
-// --- L�gica de Escaneamento (Carrega a Biblioteca) ---
+// --- Lógica de Escaneamento (Carrega a Biblioteca) ---
 void AnimationManager::ScanAnimationMods() {
-    SKSE::log::info("Iniciando escaneamento da biblioteca de anima��es...");
+    SKSE::log::info("Iniciando escaneamento da biblioteca de animações...");
     _categories.clear();
     _allMods.clear();
+
     const std::filesystem::path oarRootPath = "Data\\meshes\\actors\\character\\animations\\OpenAnimationReplacer";
-    std::map<double, std::string> typeToName = {{1.0, "Swords"},     {2.0, "Daggers"},     {3.0, "War Axes"},
-                                                {4.0, "Maces"},      {5.0, "Greatswords"}, {6.0, "Bows"},
-                                                {7.0, "Battleaxes"}, {8.0, "Warhammers"}};
-    for (const auto& pair : typeToName) {
-        _categories[pair.second].name = pair.second;
-        _categories[pair.second].equippedTypeValue = pair.first;
+    // ESTRUTURA MELHORADA: Facilita a definição de categorias e suas propriedades
+    struct CategoryDefinition {
+        std::string name;
+        double typeValue;
+        bool isDual;
+    };
+
+    std::vector<CategoryDefinition> categoryDefinitions = {{"Swords", 1.0, false},
+                                                           {"Daggers", 2.0, false},
+                                                           {"War Axes", 3.0, false},
+                                                           {"Maces", 4.0, false},
+                                                           {"Greatswords", 5.0, false},
+                                                           {"Bows", 6.0, false},
+                                                           {"Battleaxes", 7.0, false},
+                                                           {"Warhammers", 8.0, false},
+                                                           // NOVAS CATEGORIAS DUAL WIELD
+                                                           {"Dual Swords", 1.0, true},
+                                                           {"Dual Daggers", 2.0, true},
+                                                           {"Dual War Axes", 3.0, true},
+                                                           {"Dual Maces", 4.0, true}};
+
+    for (const auto& def : categoryDefinitions) {
+        _categories[def.name].name = def.name;
+        _categories[def.name].equippedTypeValue = def.typeValue;
+        _categories[def.name].isDualWield = def.isDual;
     }
+
     if (!std::filesystem::exists(oarRootPath)) return;
     for (const auto& entry : std::filesystem::directory_iterator(oarRootPath)) {
         if (entry.is_directory()) {
@@ -61,7 +82,7 @@ void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) 
     }
 }
 
-// --- L�gica da Interface de Usu�rio ---
+// --- Lógica da Interface de Usuário ---
 void AnimationManager::DrawAddModModal() {
     if (_isAddModModalOpen) {
         if (_instanceToAddTo)
@@ -100,7 +121,7 @@ void AnimationManager::DrawAddModModal() {
     }
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     if (ImGui::BeginPopupModal("Adicionar Sub-Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Biblioteca de Anima��es");
+        ImGui::Text("Biblioteca de Animações");
         ImGui::Separator();
         if (ImGui::BeginChild("BibliotecaSubMovesets", ImVec2(600, 400), true)) {
             for (size_t modIdx = 0; modIdx < _allMods.size(); ++modIdx) {
@@ -130,17 +151,17 @@ void AnimationManager::DrawAddModModal() {
 }
 
 void AnimationManager::DrawImGuiMenu() {
-    if (ImGui::Button("Salvar Todas as Configura��es")) {
-        // SaveAllSettings();
+    if (ImGui::Button("Save config")) {
+        SaveAllSettings();
     }
     ImGui::SameLine();
-    ImGui::Checkbox("Preservar Condi��es Externas", &_preserveConditions);
+    ImGui::Checkbox("Preservar Condições Externas", &_preserveConditions);
     ImGui::Separator();
 
     DrawAddModModal();
 
     if (_categories.empty()) {
-        ImGui::Text("Nenhuma categoria de anima��o foi carregada.");
+        ImGui::Text("Nenhuma categoria de animação foi carregada.");
         return;
     }
 
@@ -148,16 +169,16 @@ void AnimationManager::DrawImGuiMenu() {
     for (auto& pair : _categories) {
         WeaponCategory& category = pair.second;
         ImGui::PushID(category.name.c_str());
-        // CORRE��O: Usando a l�gica simples que sempre funciona, sem acorde�o por enquanto.
+        // CORREÇÃO: Usando a lógica simples que sempre funciona, sem acordeão por enquanto.
         if (ImGui::CollapsingHeader(category.name.c_str())) {
             
-            if (ImGui::BeginTabBar("InstanceTabs")) {
+            if (ImGui::BeginTabBar("StanceTabs")) {
                 for (int i = 0; i < 4; ++i) {
-                    if (ImGui::BeginTabItem(std::format("Inst�ncia {}", i + 1).c_str())) {
+                    if (ImGui::BeginTabItem(std::format("Stance {}", i + 1).c_str())) {
                         category.activeInstanceIndex = i;
                         CategoryInstance& instance = category.instances[i];
 
-                        // Bot�es de a��o para a inst�ncia
+                        // Botões de ação para a instância
                         if (ImGui::Button("Adicionar Moveset")) {
                             _isAddModModalOpen = true;
                             _instanceToAddTo = &instance;
@@ -166,20 +187,31 @@ void AnimationManager::DrawImGuiMenu() {
                         ImGui::Separator();
 
                         int modInstanceToRemove = -1;
-                        int playlistEntryCounter = 1;
-
+                        int playlistEntryCounter = 1;  // Contador apenas para "Pais"
                         // Loop para os Movesets (ModInstance)
                         for (size_t mod_i = 0; mod_i < instance.modInstances.size(); ++mod_i) {
                             auto& modInstance = instance.modInstances[mod_i];
                             const auto& sourceMod = _allMods[modInstance.sourceModIndex];
 
                             ImGui::PushID(static_cast<int>(mod_i));
+                            // --- INÍCIO DA CORREÇÃO DO BUG VISUAL ---
+
+                            // 1. Salvamos o estado ANTES de desenhar qualquer coisa.
+                            const bool isParentDisabled = !modInstance.isSelected;
+
+                            // 2. Aplicamos a cor cinza se o estado for "desabilitado".
+                            if (isParentDisabled) {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle()->Colors[ImGuiCol_TextDisabled]);
+                            }
+
+                            // 3. Desenhamos todos os widgets do "Pai" (botão, checkbox, nome)
                             if (ImGui::Button("X")) modInstanceToRemove = static_cast<int>(mod_i);
                             ImGui::SameLine();
                             ImGui::Checkbox("##modselect", &modInstance.isSelected);
                             ImGui::SameLine();
-
                             bool node_open = ImGui::TreeNode(sourceMod.name.c_str());
+
+                           
 
                             // Drag and Drop para MOVESETS
                             if (ImGui::BeginDragDropSource()) {
@@ -200,6 +232,11 @@ void AnimationManager::DrawImGuiMenu() {
                                     _modInstanceToAddTo = &modInstance;
                                     _instanceToAddTo = nullptr;
                                 }
+                                // Estas variáveis agora controlam a lógica de agrupamento
+
+                                int lastParentNumber = 0;   // Armazena o número do último "Pai"
+                                // NOVO: Variável para marcar um sub-moveset para remoção
+                                //int subInstanceToRemove = -1;
 
                                 // Loop para os Sub-Movesets (SubAnimationInstance)
                                 for (size_t sub_j = 0; sub_j < modInstance.subAnimationInstances.size(); ++sub_j) {
@@ -208,16 +245,49 @@ void AnimationManager::DrawImGuiMenu() {
                                     const auto& originSubAnim = originMod.subAnimations[subInstance.sourceSubAnimIndex];
 
                                     ImGui::PushID(static_cast<int>(sub_j));
+                                    // A cor do filho depende do seu próprio estado ou do estado do pai.
+                                    const bool isChildDisabled = !subInstance.isSelected || isParentDisabled;
+
+                                    if (isChildDisabled) {
+                                        ImGui::PushStyleColor(ImGuiCol_Text,
+                                                              ImGui::GetStyle()->Colors[ImGuiCol_TextDisabled]);
+                                    }
+
                                     ImGui::Checkbox("##subselect", &subInstance.isSelected);
                                     ImGui::SameLine();
 
+
                                     std::string label;
-                                    if (subInstance.isSelected) {
-                                        label = std::format("[{}] {}", playlistEntryCounter++, originSubAnim.name);
+
+                                    // A lógica de numeração Pai/Filho agora só se aplica a itens SELECIONADOS.
+                                    if (!isChildDisabled) {
+                                        // Lógica de formatação do label (Pai vs Filho)
+                                        if (subInstance.pFront == false && subInstance.pBack == false &&
+                                            subInstance.pLeft == false && subInstance.pRight == false &&
+                                            subInstance.pFrontRight == false && subInstance.pFrontLeft == false &&
+                                            subInstance.pBackRight == false && subInstance.pBackLeft == false &&
+                                            subInstance.pRandom == false) {
+                                            // É um "Pai" (checkbox desmarcada)
+                                            lastParentNumber = playlistEntryCounter;  // Salva seu número
+                                            label = std::format("[{}] {}", playlistEntryCounter, originSubAnim.name);
+                                            playlistEntryCounter++;  // Incrementa para o próximo "Pai"
+                                        } else {
+                                            // É um "Filho" (checkbox marcada)
+                                            if (lastParentNumber > 0) {
+                                                // Se já existe um pai, usa o número dele com indentação
+                                                label =
+                                                    std::format(" -> [{}] {}", lastParentNumber, originSubAnim.name);
+                                            } else {
+                                                // Caso especial: é um filho sem pai acima dele
+                                                label = std::format(" -> [?] {}", originSubAnim.name);
+                                            }
+                                        }
                                     } else {
-                                        label = std::format("    {}", originSubAnim.name);
+                                        // Itens desmarcardos são exibidos sem número.
+                                        label = originSubAnim.name;
                                     }
 
+                                    // Adiciona o "by: author" se for de um mod diferente
                                     if (subInstance.sourceModIndex != modInstance.sourceModIndex) {
                                         label += std::format(" (by: {})", originMod.name);
                                     }
@@ -225,7 +295,8 @@ void AnimationManager::DrawImGuiMenu() {
                                     ImVec2 regionAvail;
                                     ImGui::GetContentRegionAvail(&regionAvail);
                                     ImGui::Selectable(label.c_str(), false, 0,
-                                                      ImVec2(regionAvail.x - 450, 0));
+                                                      ImVec2(regionAvail.x - 800, 0));
+
 
                                     // Drag and Drop para SUB-MOVESETS
                                     if (ImGui::BeginDragDropSource()) {
@@ -261,10 +332,20 @@ void AnimationManager::DrawImGuiMenu() {
                                     ImGui::SameLine();
                                     ImGui::Checkbox("Rnd", &subInstance.pRandom);
 
+                                    if (isChildDisabled) {
+                                        ImGui::PopStyleColor();
+                                    }
+
                                     ImGui::PopID();
                                 }
+
                                 ImGui::TreePop();
+
+                            }  // 4. Removemos a cor no final, garantindo que o Push/Pop sempre aconteçam em par.
+                            if (isParentDisabled) {
+                                ImGui::PopStyleColor();
                             }
+
                             ImGui::PopID();
                         }
 
@@ -282,8 +363,236 @@ void AnimationManager::DrawImGuiMenu() {
     }
 }
 
-// --- Fun��es Vazias (Ser�o implementadas a seguir) ---
-void AnimationManager::SaveAllSettings() { SKSE::log::info("Fun��o de salvamento ainda n�o implementada."); }
-void AnimationManager::UpdateOrCreateJson(const std::filesystem::path&, const std::vector<FileSaveConfig>&) {}
-void AnimationManager::AddCompareValuesCondition(rapidjson::Value&, const std::string&, int,
-                                                 rapidjson::Document::AllocatorType&) {}
+
+void AnimationManager::SaveAllSettings() {
+    SKSE::log::info("Iniciando salvamento global de todas as configurações...");
+    std::map<std::filesystem::path, std::vector<FileSaveConfig>> fileUpdates;
+
+    // 1. Loop através de cada CATEGORIA de arma
+    for (auto& pair : _categories) {
+        WeaponCategory& category = pair.second;
+
+        // 2. Loop através de cada uma das 4 INSTÂNCIAS
+        for (int i = 0; i < 4; ++i) {
+            CategoryInstance& instance = category.instances[i];
+
+            // 3. Loop através dos MOVESETS (ModInstance) na instância
+            for (size_t mod_i = 0; mod_i < instance.modInstances.size(); ++mod_i) {
+                ModInstance& modInstance = instance.modInstances[mod_i];
+
+                int playlistParentCounter = 1;  // Contador para os itens "Pai"
+                int lastParentOrder = 0;        // Armazena o número do último "Pai"
+
+                // 4. Loop através dos SUB-MOVESETS (SubAnimationInstance)
+                for (size_t sub_j = 0; sub_j < modInstance.subAnimationInstances.size(); ++sub_j) {
+                    SubAnimationInstance& subInstance = modInstance.subAnimationInstances[sub_j];
+
+                    // Salva apenas se tanto o sub-moveset quanto o moveset pai estiverem selecionados
+                    if (modInstance.isSelected && subInstance.isSelected) {
+                        const auto& sourceMod = _allMods[subInstance.sourceModIndex];
+                        const auto& sourceSubAnim = sourceMod.subAnimations[subInstance.sourceSubAnimIndex];
+
+                        FileSaveConfig config;
+                        config.instance_index = i + 1;  // Instância é 1-4
+                        config.category = &category;
+
+                        // Copia o estado de todas as checkboxes para o config
+                        config.pFront = subInstance.pFront;
+                        config.pBack = subInstance.pBack;
+                        config.pLeft = subInstance.pLeft;
+                        config.pRight = subInstance.pRight;
+                        config.pFrontRight = subInstance.pFrontRight;
+                        config.pFrontLeft = subInstance.pFrontLeft;
+                        config.pBackRight = subInstance.pBackRight;
+                        config.pBackLeft = subInstance.pBackLeft;
+                        config.pRandom = subInstance.pRandom;
+
+                        // Determina se é um "Pai" (nenhuma checkbox de direção marcada) ou "Filho"
+                        bool isParent =
+                            !(config.pFront || config.pBack || config.pLeft || config.pRight || config.pFrontRight ||
+                              config.pFrontLeft || config.pBackRight || config.pBackLeft || config.pRandom);
+
+                        if (isParent) {
+                            lastParentOrder = playlistParentCounter;
+                            config.order_in_playlist = playlistParentCounter++;
+                        } else {
+                            // Filhos herdam o número do último pai encontrado
+                            config.order_in_playlist = lastParentOrder;
+                        }
+
+                        // Adiciona a configuração ao mapa, agrupada pelo caminho do arquivo
+                        fileUpdates[sourceSubAnim.path].push_back(config);
+                    }
+                }
+            }
+        }
+    }
+
+    SKSE::log::info("{} arquivos de configuração serão modificados.", fileUpdates.size());
+    for (const auto& updateEntry : fileUpdates) {
+        UpdateOrCreateJson(updateEntry.first, updateEntry.second);
+    }
+
+    SKSE::log::info("Salvamento global concluído.");
+    RE::DebugNotification("Todas as configurações foram salvas!");
+}
+
+
+
+void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
+                                          const std::vector<FileSaveConfig>& configs) {
+    rapidjson::Document doc;
+    std::ifstream fileStream(jsonPath);
+    if (fileStream) {
+        std::string jsonContent((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
+        fileStream.close();
+        if (doc.Parse(jsonContent.c_str()).HasParseError()) {
+            SKSE::log::error("Erro de Parse ao ler {}. Criando um novo arquivo.", jsonPath.string());
+            doc.SetObject();
+        }
+    } else {
+        doc.SetObject();
+    }
+
+    if (!doc.IsObject()) doc.SetObject();
+    auto& allocator = doc.GetAllocator();
+
+    rapidjson::Value oldConditions(rapidjson::kArrayType);
+    if (_preserveConditions && doc.HasMember("conditions") && doc["conditions"].IsArray()) {
+        for (const auto& cond : doc["conditions"].GetArray()) {
+            rapidjson::Value c;
+            c.CopyFrom(cond, allocator);
+            oldConditions.PushBack(c, allocator);
+        }
+    }
+
+    if (doc.HasMember("conditions")) {
+        doc["conditions"].SetArray();
+    } else {
+        doc.AddMember("conditions", rapidjson::Value(rapidjson::kArrayType), allocator);
+    }
+    rapidjson::Value& conditions = doc["conditions"];
+
+    if (_preserveConditions && !oldConditions.Empty()) {
+        rapidjson::Value oldConditionsBlock(rapidjson::kObjectType);
+        oldConditionsBlock.AddMember("condition", "OR", allocator);
+        oldConditionsBlock.AddMember("comment", "Old Conditions", allocator);
+        oldConditionsBlock.AddMember("Conditions", oldConditions, allocator);
+        conditions.PushBack(oldConditionsBlock, allocator);
+    }
+
+    rapidjson::Value masterOrBlock(rapidjson::kObjectType);
+    masterOrBlock.AddMember("condition", "OR", allocator);
+    masterOrBlock.AddMember("comment", "OAR_CYCLE_MANAGER_CONDITIONS", allocator);
+    rapidjson::Value innerConditions(rapidjson::kArrayType);
+
+    for (const auto& config : configs) {
+        rapidjson::Value categoryAndBlock(rapidjson::kObjectType);
+        categoryAndBlock.AddMember("condition", "AND", allocator);
+        rapidjson::Value andConditions(rapidjson::kArrayType);
+
+        {
+            rapidjson::Value actorBase(rapidjson::kObjectType);
+            actorBase.AddMember("condition", "IsActorBase", allocator);
+            rapidjson::Value actorBaseParams(rapidjson::kObjectType);
+            actorBaseParams.AddMember("pluginName", "Skyrim.esm", allocator);
+            actorBaseParams.AddMember("formID", "7", allocator);
+            actorBase.AddMember("Actor base", actorBaseParams, allocator);
+            andConditions.PushBack(actorBase, allocator);
+        }
+        {
+            rapidjson::Value equippedType(rapidjson::kObjectType);
+            equippedType.AddMember("condition", "IsEquippedType", allocator);
+            rapidjson::Value typeVal(rapidjson::kObjectType);
+            typeVal.AddMember("value", config.category->equippedTypeValue, allocator);
+            equippedType.AddMember("Type", typeVal, allocator);
+            equippedType.AddMember("Left hand", false, allocator);  // Condição da mão direita (sempre presente)
+            andConditions.PushBack(equippedType, allocator);
+        }
+
+        // MUDANÇA: Substituído o caso especial de adagas por uma verificação genérica "isDualWield".
+        if (config.category->isDualWield) {
+            rapidjson::Value equippedTypeL(rapidjson::kObjectType);
+            equippedTypeL.AddMember("condition", "IsEquippedType", allocator);
+            rapidjson::Value typeValL(rapidjson::kObjectType);
+            typeValL.AddMember("value", config.category->equippedTypeValue, allocator);
+            equippedTypeL.AddMember("Type", typeValL, allocator);
+            equippedTypeL.AddMember("Left hand", true, allocator);  // Adiciona a condição da mão esquerda
+            andConditions.PushBack(equippedTypeL, allocator);
+        }
+
+        AddCompareValuesCondition(andConditions, "cycle_instance", config.instance_index, allocator);
+        if (config.order_in_playlist > 0) {
+            AddCompareValuesCondition(andConditions, "testarone", config.order_in_playlist, allocator);
+        }
+
+        if (config.pFront) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_F", true, allocator);
+        if (config.pBack) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_B", true, allocator);
+        if (config.pLeft) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_L", true, allocator);
+        if (config.pRight) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_R", true, allocator);
+        if (config.pFrontRight) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_FR", true, allocator);
+        if (config.pFrontLeft) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_FL", true, allocator);
+        if (config.pBackRight) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_BR", true, allocator);
+        if (config.pBackLeft) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_BL", true, allocator);
+        if (config.pRandom) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_Random", true, allocator);
+
+        categoryAndBlock.AddMember("Conditions", andConditions, allocator);
+        innerConditions.PushBack(categoryAndBlock, allocator);
+    }
+
+    if (!innerConditions.Empty()) {
+        masterOrBlock.AddMember("Conditions", innerConditions, allocator);
+        conditions.PushBack(masterOrBlock, allocator);
+    }
+
+    FILE* fp;
+    fopen_s(&fp, jsonPath.string().c_str(), "wb");
+    if (!fp) {
+        SKSE::log::error("Falha ao abrir o arquivo para escrita: {}", jsonPath.string());
+        return;
+    }
+    char writeBuffer[65536];
+    rapidjson::FileWriteStream os(fp, writeBuffer, sizeof(writeBuffer));
+    rapidjson::PrettyWriter<rapidjson::FileWriteStream> writer(os);
+    doc.Accept(writer);
+    fclose(fp);
+}
+
+// ATUALIZADO: Apenas uma pequena modificação para garantir que o 'value' é tratado como double.
+void AnimationManager::AddCompareValuesCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName,
+                                                 int value, rapidjson::Document::AllocatorType& allocator) {
+    rapidjson::Value newCompare(rapidjson::kObjectType);
+    newCompare.AddMember("condition", "CompareValues", allocator);
+    newCompare.AddMember("requiredVersion", "1.0.0.0", allocator);
+    rapidjson::Value valueA(rapidjson::kObjectType);
+    valueA.AddMember("value", static_cast<double>(value), allocator);  // Garante que o valor é float/double no JSON
+    newCompare.AddMember("Value A", valueA, allocator);
+    newCompare.AddMember("Comparison", "==", allocator);
+    rapidjson::Value valueB(rapidjson::kObjectType);
+    valueB.AddMember("graphVariable", rapidjson::Value(graphVarName.c_str(), allocator), allocator);
+    valueB.AddMember("graphVariableType", "Float", allocator);
+    newCompare.AddMember("Value B", valueB, allocator);
+    conditionsArray.PushBack(newCompare, allocator);
+}
+
+// NOVA FUNÇÃO HELPER: Adiciona uma condição "CompareValues" para um valor booleano.
+// Usada para verificar as checkboxes de movimento (F, B, L, R, etc.).
+void AnimationManager::AddCompareBoolCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName,
+                                               bool value, rapidjson::Document::AllocatorType& allocator) {
+    rapidjson::Value newCompare(rapidjson::kObjectType);
+    newCompare.AddMember("condition", "CompareValues", allocator);
+    newCompare.AddMember("requiredVersion", "1.0.0.0", allocator);
+
+    rapidjson::Value valueA(rapidjson::kObjectType);
+    valueA.AddMember("value", value, allocator);
+    newCompare.AddMember("Value A", valueA, allocator);
+
+    newCompare.AddMember("Comparison", "==", allocator);
+
+    rapidjson::Value valueB(rapidjson::kObjectType);
+    valueB.AddMember("graphVariable", rapidjson::Value(graphVarName.c_str(), allocator), allocator);
+    valueB.AddMember("graphVariableType", "bool", allocator);  // O tipo aqui é "bool"
+    newCompare.AddMember("Value B", valueB, allocator);
+
+    conditionsArray.PushBack(newCompare, allocator);
+}

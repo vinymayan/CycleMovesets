@@ -26,10 +26,23 @@ private:
     void UpdateOrCreateJson(const std::filesystem::path& jsonPath, const std::vector<FileSaveConfig>& configs);
     void AddCompareValuesCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName, int value,
                                    rapidjson::Document::AllocatorType& allocator);
+    // NOVA FUNÇÃO HELPER: Para adicionar condições booleanas (checkboxes)
+    void AddCompareBoolCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName, bool value,
+                                 rapidjson::Document::AllocatorType& allocator);
 };
 
 struct FileSaveConfig {
     int instance_index;
     int order_in_playlist;
     const WeaponCategory* category;
+    // Campos adicionados para carregar o estado das checkboxes
+    bool pFront = false;
+    bool pBack = false;
+    bool pLeft = false;
+    bool pRight = false;
+    bool pFrontRight = false;
+    bool pFrontLeft = false;
+    bool pBackRight = false;
+    bool pBackLeft = false;
+    bool pRandom = false;
 };

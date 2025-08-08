@@ -45,5 +45,6 @@ struct WeaponCategory {
     std::string name;
     double equippedTypeValue;
     int activeInstanceIndex = 0;
+    bool isDualWield = false;
     std::array<CategoryInstance, 4> instances;
 };
