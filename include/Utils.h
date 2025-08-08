@@ -26,7 +26,7 @@ namespace GlobalControl {
     const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_4 = {RE::INPUT_DEVICE::kKeyboard, 5};
     const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_U = {RE::INPUT_DEVICE::kKeyboard, 22};
     const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_I = {RE::INPUT_DEVICE::kKeyboard, 23};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_O = {RE::INPUT_DEVICE::kKeyboard, 25}; 
+    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_P = {RE::INPUT_DEVICE::kKeyboard, 25}; 
 
     // Criamos os prompts. Eles não precisam de texto, pois são apenas listeners.
     const SkyPromptAPI::Prompt stance_1("Stance", 0, 0, SkyPromptAPI::PromptType::kSinglePress, 0,std::span(&insta_1, 1));
@@ -42,7 +42,7 @@ namespace GlobalControl {
     const SkyPromptAPI::Prompt prompt_Reset("Reset", 5, 0, SkyPromptAPI::PromptType::kSinglePress, 0, std::span(&key_I, 1));
     // ActionID 2: Decrementar
     const SkyPromptAPI::Prompt prompt_Decrement("Back", 6, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                                std::span(&key_O, 1));
+                                                std::span(&key_P, 1));
 
     // A classe Sink processa os eventos da API
     class Sink final : public SkyPromptAPI::PromptSink, public clib_util::singleton::ISingleton<Sink> {

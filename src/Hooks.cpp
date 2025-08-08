@@ -1,7 +1,7 @@
 ﻿#include <format>
 #include <fstream>
 #include <string>
-
+#include <algorithm>
 #include "Events.h"
 #include "SKSEMCP/SKSEMenuFramework.hpp"
 #include "rapidjson/document.h"
@@ -13,6 +13,8 @@ AnimationManager& AnimationManager::GetSingleton() {
     static AnimationManager instance;
     return instance;
 }
+
+
 
 // --- Lógica de Escaneamento (Carrega a Biblioteca) ---
 void AnimationManager::ScanAnimationMods() {
@@ -54,7 +56,29 @@ void AnimationManager::ScanAnimationMods() {
             ProcessTopLevelMod(entry.path());
         }
     }
-    SKSE::log::info("Escaneamento finalizado. {} mods carregados na biblioteca.", _allMods.size());
+    SKSE::log::info("Escaneamento de arquivos finalizado. {} mods carregados.", _allMods.size());
+
+    // --- NOVA SEÇÃO: Carregar e integrar movesets do usuário ---
+    LoadUserMovesets();
+
+    for (const auto& userMoveset : _userMovesets) {
+        AnimationModDef modDef;
+        modDef.name = userMoveset.name;
+        modDef.author = "Usuário";  // Autor padrão
+
+        for (const auto& subInstance : userMoveset.subAnimations) {
+            // Verifica se os índices são válidos para evitar crashes
+            if (subInstance.sourceModIndex < _allMods.size()) {
+                const auto& sourceMod = _allMods[subInstance.sourceModIndex];
+                if (subInstance.sourceSubAnimIndex < sourceMod.subAnimations.size()) {
+                    // Adiciona a definição da sub-animação original ao nosso novo mod virtual
+                    modDef.subAnimations.push_back(sourceMod.subAnimations[subInstance.sourceSubAnimIndex]);
+                }
+            }
+        }
+        _allMods.push_back(modDef);
+    }
+    SKSE::log::info("Integração finalizada. Total de {} mods na biblioteca (incluindo de usuário).", _allMods.size());
 }
 
 void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) {
@@ -85,10 +109,13 @@ void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) 
 // --- Lógica da Interface de Usuário ---
 void AnimationManager::DrawAddModModal() {
     if (_isAddModModalOpen) {
-        if (_instanceToAddTo)
+        if (_instanceToAddTo) {
             ImGui::OpenPopup("Adicionar Moveset");
-        else if (_modInstanceToAddTo)
+        }
+        // CORREÇÃO: O modal de sub-moveset agora abre se QUALQUER um dos ponteiros for válido.
+        else if (_modInstanceToAddTo || _userMovesetToAddTo) {
             ImGui::OpenPopup("Adicionar Sub-Moveset");
+        }
         _isAddModModalOpen = false;
     }
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -97,46 +124,102 @@ void AnimationManager::DrawAddModModal() {
     if (ImGui::BeginPopupModal("Adicionar Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Biblioteca de Movesets");
         ImGui::Separator();
+        // NOVO: Caixa de pesquisa para movesets
+        ImGui::InputText("Filtrar", _movesetFilter, 128);
         if (ImGui::BeginChild("BibliotecaMovesets", ImVec2(600, 400), true)) {
+            // Prepara o filtro para busca case-insensitive
+            std::string filter_str = _movesetFilter;
+            std::transform(filter_str.begin(), filter_str.end(), filter_str.begin(), ::tolower);
+
             for (size_t modIdx = 0; modIdx < _allMods.size(); ++modIdx) {
                 const auto& modDef = _allMods[modIdx];
-                ImGui::Text("%s", modDef.name.c_str());
-                ImGui::SameLine(ImGui::GetWindowWidth() - 100);
-                if (ImGui::Button(("Adicionar##" + modDef.name).c_str())) {
-                    ModInstance newModInstance;
-                    newModInstance.sourceModIndex = modIdx;
-                    for (size_t subIdx = 0; subIdx < modDef.subAnimations.size(); ++subIdx) {
-                        SubAnimationInstance newSubInstance;
-                        newSubInstance.sourceModIndex = modIdx;
-                        newSubInstance.sourceSubAnimIndex = subIdx;
-                        newModInstance.subAnimationInstances.push_back(newSubInstance);
+
+                std::string mod_name_str = modDef.name;
+                std::transform(mod_name_str.begin(), mod_name_str.end(), mod_name_str.begin(), ::tolower);
+
+                // Aplica o filtro
+                if (filter_str.empty() || mod_name_str.find(filter_str) != std::string::npos) {
+                    ImGui::Text("%s", modDef.name.c_str());
+                    ImGui::SameLine(ImGui::GetWindowWidth() - 100);
+                    if (ImGui::Button(("Adicionar##" + modDef.name).c_str())) {
+                        ModInstance newModInstance;
+                        newModInstance.sourceModIndex = modIdx;
+                        for (size_t subIdx = 0; subIdx < modDef.subAnimations.size(); ++subIdx) {
+                            SubAnimationInstance newSubInstance;
+                            newSubInstance.sourceModIndex = modIdx;
+                            newSubInstance.sourceSubAnimIndex = subIdx;
+                            newModInstance.subAnimationInstances.push_back(newSubInstance);
+                        }
+                        _instanceToAddTo->modInstances.push_back(newModInstance);
                     }
-                    _instanceToAddTo->modInstances.push_back(newModInstance);
                 }
             }
         }
         ImGui::EndChild();
-        if (ImGui::Button("Fechar")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Fechar")) {
+            strcpy_s(_movesetFilter, "");  // Limpa o filtro ao fechar
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     if (ImGui::BeginPopupModal("Adicionar Sub-Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Biblioteca de Animações");
         ImGui::Separator();
+        // NOVO: Caixa de pesquisa para sub-movesets
+        ImGui::InputText("Filtrar", _subMovesetFilter, 128);
+
         if (ImGui::BeginChild("BibliotecaSubMovesets", ImVec2(600, 400), true)) {
+            std::string filter_str = _subMovesetFilter;
+            std::transform(filter_str.begin(), filter_str.end(), filter_str.begin(), ::tolower);
+
             for (size_t modIdx = 0; modIdx < _allMods.size(); ++modIdx) {
                 const auto& modDef = _allMods[modIdx];
-                if (ImGui::TreeNode(modDef.name.c_str())) {
-                    for (size_t subAnimIdx = 0; subAnimIdx < modDef.subAnimations.size(); ++subAnimIdx) {
-                        const auto& subAnimDef = modDef.subAnimations[subAnimIdx];
-                        ImGui::Text("%s", subAnimDef.name.c_str());
-                        ImGui::SameLine();
-                        ImGui::PushID(static_cast<int>(modIdx * 1000 + subAnimIdx));
-                        if (ImGui::Button("Adicionar")) {
-                            SubAnimationInstance newSubInstance;
-                            newSubInstance.sourceModIndex = modIdx;
-                            newSubInstance.sourceSubAnimIndex = subAnimIdx;
-                            _modInstanceToAddTo->subAnimationInstances.push_back(newSubInstance);
+
+                std::string mod_name_str = modDef.name;
+                std::transform(mod_name_str.begin(), mod_name_str.end(), mod_name_str.begin(), ::tolower);
+                bool parent_matches = mod_name_str.find(filter_str) != std::string::npos;
+
+                // Verifica se algum filho corresponde ao filtro
+                bool child_matches = false;
+                if (!parent_matches) {
+                    for (const auto& subAnim : modDef.subAnimations) {
+                        std::string sub_name_str = subAnim.name;
+                        std::transform(sub_name_str.begin(), sub_name_str.end(), sub_name_str.begin(), ::tolower);
+                        if (sub_name_str.find(filter_str) != std::string::npos) {
+                            child_matches = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Mostra o TreeNode se o filtro estiver vazio, ou se o pai ou algum filho corresponder
+                if (filter_str.empty() || parent_matches || child_matches) {
+                    if (ImGui::TreeNode(modDef.name.c_str())) {
+                        for (size_t subAnimIdx = 0; subAnimIdx < modDef.subAnimations.size(); ++subAnimIdx) {
+                            const auto& subAnimDef = modDef.subAnimations[subAnimIdx];
+
+                            std::string sub_name_str = subAnimDef.name;
+                            std::transform(sub_name_str.begin(), sub_name_str.end(), sub_name_str.begin(), ::tolower);
+
+                            // Mostra o filho se o filtro estiver vazio ou se ele corresponder
+                            if (filter_str.empty() || sub_name_str.find(filter_str) != std::string::npos) {
+                                ImGui::Text("%s", subAnimDef.name.c_str());
+                                ImGui::SameLine();
+                                ImGui::PushID(static_cast<int>(modIdx * 1000 + subAnimIdx));
+                                if (ImGui::Button("Adicionar")) {
+                                    SubAnimationInstance newSubInstance;
+                                    newSubInstance.sourceModIndex = modIdx;
+                                    newSubInstance.sourceSubAnimIndex = subAnimIdx;
+                                    if (_modInstanceToAddTo) {  // Se estamos adicionando a um ModInstance (sistema
+                                                                // antigo)
+                                        _modInstanceToAddTo->subAnimationInstances.push_back(newSubInstance);
+                                    } else if (_userMovesetToAddTo) {  // Se estamos adicionando a um UserMoveset
+                                                                       // (sistema novo)
+                                        _userMovesetToAddTo->subAnimations.push_back(newSubInstance);
+                                    }
+                                }
+                            }
                         }
                         ImGui::PopID();
                     }
@@ -150,7 +233,28 @@ void AnimationManager::DrawAddModModal() {
     }
 }
 
-void AnimationManager::DrawImGuiMenu() {
+// Esta é a nova função principal da UI que você registrará no SKSEMenuFramework
+void AnimationManager::DrawMainMenu() {
+    // Primeiro, desenhamos o sistema de abas
+    if (ImGui::BeginTabBar("MainTabs")) {
+        if (ImGui::BeginTabItem("Gerenciador de Animações")) {
+            DrawAnimationManager();  // Chama a UI da primeira aba
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Gerenciar Meus Movesets")) {
+            DrawUserMovesetManager();  // Chama a UI da segunda aba
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+
+    // CORREÇÃO: Chamamos a função do modal aqui, fora de qualquer aba.
+    // Ele só será desenhado quando a flag _isAddModModalOpen for verdadeira,
+    // mas agora ele não pertence a nenhuma aba específica.
+    DrawAddModModal();
+}
+
+void AnimationManager::DrawAnimationManager() {
     if (ImGui::Button("Save config")) {
         SaveAllSettings();
     }
@@ -158,7 +262,7 @@ void AnimationManager::DrawImGuiMenu() {
     ImGui::Checkbox("Preservar Condições Externas", &_preserveConditions);
     ImGui::Separator();
 
-    DrawAddModModal();
+    // DrawAddModModal();
 
     if (_categories.empty()) {
         ImGui::Text("Nenhuma categoria de animação foi carregada.");
@@ -595,4 +699,229 @@ void AnimationManager::AddCompareBoolCondition(rapidjson::Value& conditionsArray
     newCompare.AddMember("Value B", valueB, allocator);
 
     conditionsArray.PushBack(newCompare, allocator);
+}
+// Novas funcoes para usermovesets
+
+void AnimationManager::LoadUserMovesets() {
+    _userMovesets.clear();
+    const std::filesystem::path userMovesetsPath = "Data/SKSE/Plugins/CycleMovesets/UserMovesets.json";
+
+    if (!std::filesystem::exists(userMovesetsPath)) {
+        SKSE::log::info("Arquivo UserMovesets.json não encontrado. Nenhum moveset de usuário carregado.");
+        return;
+    }
+
+    std::ifstream fileStream(userMovesetsPath);
+    std::string jsonContent((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
+    fileStream.close();
+
+    rapidjson::Document doc;
+    if (doc.Parse(jsonContent.c_str()).HasParseError() || !doc.IsArray()) {
+        SKSE::log::error("Erro ao fazer parse do UserMovesets.json.");
+        return;
+    }
+
+    for (const auto& userMovesetJson : doc.GetArray()) {
+        if (!userMovesetJson.IsObject()) continue;
+
+        UserMoveset loadedMoveset;
+        if (userMovesetJson.HasMember("name") && userMovesetJson["name"].IsString()) {
+            loadedMoveset.name = userMovesetJson["name"].GetString();
+        }
+
+        if (userMovesetJson.HasMember("submovesets") && userMovesetJson["submovesets"].IsArray()) {
+            for (const auto& subAnimJson : userMovesetJson["submovesets"].GetArray()) {
+                SubAnimationInstance subInstance;
+                if (subAnimJson.HasMember("sourceModIndex") && subAnimJson["sourceModIndex"].IsUint()) {
+                    subInstance.sourceModIndex = subAnimJson["sourceModIndex"].GetUint();
+                }
+                if (subAnimJson.HasMember("sourceSubAnimIndex") && subAnimJson["sourceSubAnimIndex"].IsUint()) {
+                    subInstance.sourceSubAnimIndex = subAnimJson["sourceSubAnimIndex"].GetUint();
+                }
+                loadedMoveset.subAnimations.push_back(subInstance);
+            }
+        }
+        _userMovesets.push_back(loadedMoveset);
+    }
+    SKSE::log::info("{} movesets de usuário carregados.", _userMovesets.size());
+}
+
+void AnimationManager::SaveUserMovesets() {
+    const std::filesystem::path userMovesetsPath = "Data/SKSE/Plugins/CycleMovesets/UserMovesets.json";
+    std::filesystem::create_directories(userMovesetsPath.parent_path());
+
+    rapidjson::Document doc;
+    doc.SetArray();
+    auto& allocator = doc.GetAllocator();
+
+    for (const auto& userMoveset : _userMovesets) {
+        rapidjson::Value movesetObj(rapidjson::kObjectType);
+        movesetObj.AddMember("name", rapidjson::Value(userMoveset.name.c_str(), allocator), allocator);
+
+        rapidjson::Value subAnimsArray(rapidjson::kArrayType);
+        for (const auto& subAnim : userMoveset.subAnimations) {
+            rapidjson::Value subAnimObj(rapidjson::kObjectType);
+            subAnimObj.AddMember("sourceModIndex", rapidjson::Value(subAnim.sourceModIndex), allocator);
+            subAnimObj.AddMember("sourceSubAnimIndex", rapidjson::Value(subAnim.sourceSubAnimIndex), allocator);
+            subAnimsArray.PushBack(subAnimObj, allocator);
+        }
+        movesetObj.AddMember("submovesets", subAnimsArray, allocator);
+        doc.PushBack(movesetObj, allocator);
+    }
+
+    FILE* fp;
+    fopen_s(&fp, userMovesetsPath.string().c_str(), "wb");
+    if (!fp) {
+        SKSE::log::error("Falha ao salvar UserMovesets.json.");
+        return;
+    }
+    char writeBuffer[65536];
+    rapidjson::FileWriteStream os(fp, writeBuffer, sizeof(writeBuffer));
+    rapidjson::PrettyWriter<rapidjson::FileWriteStream> writer(os);
+    doc.Accept(writer);
+    fclose(fp);
+    SKSE::log::info("Movesets de usuário salvos com sucesso.");
+}
+
+// Hooks.cpp (adicionar estas novas funções)
+
+// Hooks.cpp (adicionar estas novas funções)
+
+void AnimationManager::DrawUserMovesetEditor() {
+    ImGui::Text("Editando o Moveset: %s", _workspaceMoveset.name.c_str());
+    ImGui::Separator();
+
+    if (ImGui::Button("Adicionar Sub-Moveset")) {
+        // Prepara o modal para adicionar ao nosso "workspace"
+        _isAddModModalOpen = true;
+        _instanceToAddTo = nullptr;
+        _modInstanceToAddTo = nullptr;
+        _userMovesetToAddTo = &_workspaceMoveset;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Salvar Moveset")) {
+        if (_editingMovesetIndex == -1) {  // Criando um novo
+            _userMovesets.push_back(_workspaceMoveset);
+        } else {  // Editando um existente
+            _userMovesets[_editingMovesetIndex] = _workspaceMoveset;
+        }
+        SaveUserMovesets();
+        RebuildUserMovesetLibrary();    // <-- refaz a lista
+        _isEditingUserMoveset = false;  // Volta para a tela de listagem
+        SKSE::log::info("Moveset '{}' salvo. Recarregue o menu para vê-lo na lista de 'Adicionar Moveset'.",
+                        _workspaceMoveset.name);
+        RE::DebugNotification("Moveset salvo! Recarregue o menu para usar.");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancelar")) {
+        _isEditingUserMoveset = false;  // Volta sem salvar
+    }
+    ImGui::Separator();
+
+    // Lista de sub-movesets no workspace
+    int subToRemove = -1;
+    for (size_t i = 0; i < _workspaceMoveset.subAnimations.size(); ++i) {
+        const auto& subInstance = _workspaceMoveset.subAnimations[i];
+        const auto& sourceMod = _allMods[subInstance.sourceModIndex];
+        const auto& sourceSubAnim = sourceMod.subAnimations[subInstance.sourceSubAnimIndex];
+
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::Button("X")) {
+            subToRemove = static_cast<int>(i);
+        }
+        ImGui::SameLine();
+        ImGui::Text("%s (de: %s)", sourceSubAnim.name.c_str(), sourceMod.name.c_str());
+        ImGui::PopID();
+    }
+
+    if (subToRemove != -1) {
+        _workspaceMoveset.subAnimations.erase(_workspaceMoveset.subAnimations.begin() + subToRemove);
+    }
+}
+
+void AnimationManager::DrawUserMovesetManager() {
+    // Se estamos na tela de edição, desenha o editor e para por aqui.
+    if (_isEditingUserMoveset) {
+        DrawUserMovesetEditor();
+        return;
+    }
+
+    // --- Tela principal de listagem ---
+    if (ImGui::Button("Criar Novo Moveset")) {
+        ImGui::OpenPopup("Nomear Novo Moveset");
+        strcpy_s(_newMovesetNameBuffer, "");  // Limpa o buffer
+    }
+
+    // Popup para dar nome ao novo moveset
+    if (ImGui::BeginPopupModal("Nomear Novo Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::InputText("Nome", _newMovesetNameBuffer, 128);
+        if (ImGui::Button("Criar e Editar")) {
+            if (strlen(_newMovesetNameBuffer) > 0) {
+                _workspaceMoveset = UserMoveset{};  // Limpa o workspace
+                _workspaceMoveset.name = _newMovesetNameBuffer;
+                _editingMovesetIndex = -1;     // -1 significa que é um novo moveset
+                _isEditingUserMoveset = true;  // Muda para a tela de edição
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancelar")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Meus Movesets Salvos:");
+
+    // Lista de movesets já criados
+    int movesetToRemove = -1;
+    for (size_t i = 0; i < _userMovesets.size(); ++i) {
+        const auto& userMoveset = _userMovesets[i];
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::Text("%s", userMoveset.name.c_str());
+        ImGui::SameLine();
+        if (ImGui::Button("Editar")) {
+            _workspaceMoveset = userMoveset;  // Copia para o workspace
+            _editingMovesetIndex = static_cast<int>(i);
+            _isEditingUserMoveset = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Remover")) {
+            movesetToRemove = static_cast<int>(i);
+        }
+        ImGui::PopID();
+    }
+
+    if (movesetToRemove != -1) {
+        _userMovesets.erase(_userMovesets.begin() + movesetToRemove);
+        SaveUserMovesets();  // Salva a remoção
+    }
+}
+
+// Hooks.cpp (adicione esta nova função em qualquer lugar com as outras definições de função)
+
+void AnimationManager::RebuildUserMovesetLibrary() {
+    SKSE::log::info("Reconstruindo a biblioteca de movesets do usuário em tempo real...");
+
+    // Remove todos os mods que foram previamente adicionados como "Usuário" para evitar duplicatas
+    std::erase_if(_allMods, [](const AnimationModDef& mod) { return mod.author == "Usuário"; });
+
+    // Readiciona os movesets da lista _userMovesets (que está atualizada em memória)
+    for (const auto& userMoveset : _userMovesets) {
+        AnimationModDef modDef;
+        modDef.name = userMoveset.name;
+        modDef.author = "Usuário";
+
+        for (const auto& subInstance : userMoveset.subAnimations) {
+            if (subInstance.sourceModIndex < _allMods.size()) {
+                const auto& sourceMod = _allMods[subInstance.sourceModIndex];
+                if (subInstance.sourceSubAnimIndex < sourceMod.subAnimations.size()) {
+                    modDef.subAnimations.push_back(sourceMod.subAnimations[subInstance.sourceSubAnimIndex]);
+                }
+            }
+        }
+        _allMods.push_back(modDef);
+    }
+    SKSE::log::info("Biblioteca reconstruída. Total de {} mods.", _allMods.size());
 }

@@ -1,7 +1,7 @@
 #pragma once
 #include <map>
 #include <optional>
-
+#include <string>
 #include "Settings.h"  // Inclui as novas definições
 #include "rapidjson/document.h"
 
@@ -11,7 +11,7 @@ class AnimationManager {
 public:
     static AnimationManager& GetSingleton();
     void ScanAnimationMods();
-    void DrawImGuiMenu();
+    void DrawMainMenu();
 
 private:
     std::map<std::string, WeaponCategory> _categories;
@@ -20,6 +20,10 @@ private:
     bool _isAddModModalOpen = false;
     CategoryInstance* _instanceToAddTo = nullptr;
     ModInstance* _modInstanceToAddTo = nullptr;
+    // NOVO: Variáveis para o modal de criação de moveset
+    ModInstance* _modInstanceToSaveAsCustom = nullptr;
+    char _newMovesetNameBuffer[128] = "";
+
     void ProcessTopLevelMod(const std::filesystem::path& modPath);
     void DrawAddModModal();
     void SaveAllSettings();
@@ -29,6 +33,39 @@ private:
     // NOVA FUNÇÃO HELPER: Para adicionar condições booleanas (checkboxes)
     void AddCompareBoolCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName, bool value,
                                  rapidjson::Document::AllocatorType& allocator);
+
+    // --- NOVAS VARIÁVEIS PARA GERENCIAR MOVESETS DO USUÁRIO ---
+
+    // Estrutura para manter um moveset de usuário em memória
+    struct UserMoveset {
+        std::string name;
+        std::vector<SubAnimationInstance> subAnimations;
+    };
+
+    // Vetor com todos os movesets criados pelo usuário
+    std::vector<UserMoveset> _userMovesets;
+
+    // Estado da UI de criação/edição
+    bool _isEditingUserMoveset = false;  // true quando estamos na tela de edição
+    int _editingMovesetIndex = -1;       // Índice do moveset sendo editado, -1 para um novo
+    UserMoveset _workspaceMoveset;       // "Mesa de trabalho" para criar/editar um moveset
+
+    // Ponteiro para saber onde adicionar um sub-moveset vindo do modal
+    UserMoveset* _userMovesetToAddTo = nullptr;
+
+
+
+    // --- NOVAS FUNÇÕES PRIVADAS ---
+    void DrawAnimationManager();  // Movido para private pois é chamado por DrawMainMenu
+    void LoadUserMovesets();
+    void SaveUserMovesets();
+    void DrawUserMovesetManager();  // A UI principal para esta nova seção
+    void DrawUserMovesetEditor();   // A UI para a tela de edição
+    void RebuildUserMovesetLibrary();  // <-- ADICIONE ESTA LINHA
+
+    // Filtro de pesquisa
+    char _movesetFilter[128] = "";
+    char _subMovesetFilter[128] = "";
 };
 
 struct FileSaveConfig {

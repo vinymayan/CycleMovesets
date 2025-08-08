@@ -6,7 +6,7 @@
 #include "SKSEMCP/SKSEMenuFramework.hpp"
 
 void __stdcall UI::Render() {
-    AnimationManager::GetSingleton().DrawImGuiMenu();  // Chamando a função com o nome correto
+    AnimationManager::GetSingleton().DrawMainMenu();  // Chamando a função com o nome correto
 }
 
 void UI::RegisterMenu() {

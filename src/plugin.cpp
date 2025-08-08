@@ -34,21 +34,25 @@ namespace GlobalControl {
         switch (event.prompt.eventID) {
             case 0:  // Incrementar (Tecla 1)
                 SKSE::log::info("Apertou tecla 1");
+                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
                 RE::DebugNotification(std::format("Apertou tecla 1").c_str());
                 break;
 
             case 1:  // Incrementar (Tecla 2)
                 SKSE::log::info("Apertou tecla 2");
+                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
                 RE::DebugNotification(std::format("Apertou tecla 2").c_str());
                 break;
 
             case 2:  // Incrementar (Tecla 3)
                 SKSE::log::info("Apertou tecla 3");
+                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
                 RE::DebugNotification(std::format("Apertou tecla 3").c_str());
                 break;
 
-            case 3:  // Incrementar (Tecla U)
+            case 3:  // Incrementar (Tecla 4)
                 SKSE::log::info("Apertou tecla 4");
+                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
                 RE::DebugNotification(std::format("Apertou tecla 4").c_str());
                 break;
 
@@ -76,9 +80,9 @@ namespace GlobalControl {
 
         // Reenviamos os prompts para a API para que ela continue a escutar por futuras pressões.
         // Algumas APIs consomem o prompt após o uso, então esta é uma boa prática.
-        //if (!SkyPromptAPI::SendPrompt(this, g_clientID)){
-        //  SKSE::log::warn("Falha ao reenviar prompt para a SkyPromptAPI.");
-        //}
+        if (!SkyPromptAPI::SendPrompt(this, g_clientID)){
+          SKSE::log::warn("Falha ao reenviar prompt para a SkyPromptAPI.");
+        }
     }
     // <-- NOVO: Implementação da lógica do ouvinte de eventos de ação -->
     RE::BSEventNotifyControl ActionEventHandler::ProcessEvent(const SKSE::ActionEvent* a_event,
