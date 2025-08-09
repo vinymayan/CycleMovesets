@@ -29,6 +29,7 @@ struct SubAnimationInstance {
     bool pBackRight = false;
     bool pBackLeft = false;
     bool pRandom = false;
+    bool pDodge = false;
 };
 
 struct ModInstance {

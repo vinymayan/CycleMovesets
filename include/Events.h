@@ -34,6 +34,10 @@ private:
     void AddCompareBoolCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName, bool value,
                                  rapidjson::Document::AllocatorType& allocator);
 
+    // Função do random aqui
+    void AddRandomCondition(rapidjson::Value& conditionsArray, int value,
+                                              rapidjson::Document::AllocatorType& allocator);
+
     // --- NOVAS VARIÁVEIS PARA GERENCIAR MOVESETS DO USUÁRIO ---
 
     // Estrutura para manter um moveset de usuário em memória
@@ -66,6 +70,8 @@ private:
     // Filtro de pesquisa
     char _movesetFilter[128] = "";
     char _subMovesetFilter[128] = "";
+    // Da load na ordem dos movesets e submovesets
+    void LoadStateForSubAnimation(size_t modIdx, size_t subAnimIdx);
 };
 
 struct FileSaveConfig {
@@ -82,4 +88,5 @@ struct FileSaveConfig {
     bool pBackRight = false;
     bool pBackLeft = false;
     bool pRandom = false;
+    bool pDodge = false;
 };

@@ -103,8 +103,129 @@ void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) 
             }
         }
         _allMods.push_back(modDef);
+
     }
 }
+
+
+//void AnimationManager::LoadStateForSubAnimation(size_t modIdx, size_t subAnimIdx) {
+//    const auto& subAnimDef = _allMods[modIdx].subAnimations[subAnimIdx];
+//    const auto& jsonPath = subAnimDef.path;
+//
+//    if (!std::filesystem::exists(jsonPath)) return;
+//
+//    std::ifstream fileStream(jsonPath);
+//    std::string jsonContent((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
+//    fileStream.close();
+//
+//    rapidjson::Document doc;
+//    if (doc.Parse(jsonContent.c_str()).HasParseError() || !doc.IsObject() || !doc.HasMember("conditions")) {
+//        return;
+//    }
+//
+//    const rapidjson::Value& conditions = doc["conditions"];
+//    if (!conditions.IsArray()) return;
+//
+//    // Encontra o nosso bloco de condições gerenciado
+//    for (const auto& topCond : conditions.GetArray()) {
+//        if (topCond.IsObject() && topCond.HasMember("comment") &&
+//            strcmp(topCond["comment"].GetString(), "OAR_CYCLE_MANAGER_CONDITIONS") == 0 &&
+//            topCond.HasMember("Conditions") && topCond["Conditions"].IsArray()) {
+//            const rapidjson::Value& andBlocks = topCond["Conditions"];
+//            // Cada bloco AND corresponde a uma configuração salva para esta animação
+//            for (const auto& andBlock : andBlocks.GetArray()) {
+//                if (!andBlock.IsObject() || !andBlock.HasMember("Conditions") || !andBlock["Conditions"].IsArray())
+//                    continue;
+//
+//                // Extrai os dados do bloco
+//                double equippedTypeValue = 0.0;
+//                bool isDual = false;
+//                int instance_index = 0;
+//                float directionalValue = 0.0;
+//                int randomValue = 0;
+//
+//                const rapidjson::Value& finalConditions = andBlock["Conditions"];
+//                for (const auto& cond : finalConditions.GetArray()) {
+//                    if (!cond.IsObject() || !cond.HasMember("condition")) continue;
+//                    std::string condName = cond["condition"].GetString();
+//
+//                    if (condName == "IsEquippedType" && cond.HasMember("Type")) {
+//                        equippedTypeValue = cond["Type"]["value"].GetDouble();
+//                        if (cond.HasMember("Left hand") && cond["Left hand"].GetBool()) {
+//                            isDual = true;
+//                        }
+//                    }
+//                    if (condName == "CompareValues" && cond.HasMember("Value B")) {
+//                        std::string varName = cond["Value B"]["graphVariable"].GetString();
+//                        if (varName == "cycle_instance") instance_index = cond["Value A"]["value"].GetInt();
+//                        if (varName == "DirecionalCycleMoveset") directionalValue = cond["Value A"]["value"].GetFloat();
+//                    }
+//                    if (condName == "Random") {
+//                        if (cond.HasMember("Minimum random value"))
+//                            randomValue = cond["Minimum random value"]["value"].GetInt();
+//                    }
+//                }
+//
+//                // Se não encontramos dados válidos, pulamos
+//                if (instance_index == 0) continue;
+//
+//                // Encontra a categoria correta
+//                WeaponCategory* targetCategory = nullptr;
+//                for (auto& pair : _categories) {
+//                    if (pair.second.equippedTypeValue == equippedTypeValue && pair.second.isDualWield == isDual) {
+//                        targetCategory = &pair.second;
+//                        break;
+//                    }
+//                }
+//                if (!targetCategory) continue;
+//                // Se o índice da instância que queremos acessar não existe ainda no vetor...
+//                if (instance_index < 1 || instance_index > 4) {
+//                    // Se o índice for inválido (ex: 0, 5, etc.), pula para a próxima iteração do loop.
+//                    SKSE::log::warn("Índice de instância inválido ({}) encontrado no JSON. Ignorando.",
+//                                    instance_index);  // Log opcional para debug
+//                    continue;
+//                }
+//                // Cria a instância da sub-animação com os dados carregados
+//                SubAnimationInstance newSubInstance;
+//                newSubInstance.sourceModIndex = modIdx;
+//                newSubInstance.sourceSubAnimIndex = subAnimIdx;
+//                newSubInstance.isSelected = true;  // Se está salva, está selecionada
+//
+//                if (randomValue > 0) {
+//                    newSubInstance.pRandom = true;
+//                } else if (directionalValue > 0.0f) {
+//                    if (directionalValue == 1.0f)
+//                        newSubInstance.pFront = true;
+//                    else if (directionalValue == 2.0f)
+//                        newSubInstance.pFrontRight = true;
+//                    else if (directionalValue == 3.0f)
+//                        newSubInstance.pRight = true;
+//                    else if (directionalValue == 4.0f)
+//                        newSubInstance.pBackRight = true;
+//                    else if (directionalValue == 5.0f)
+//                        newSubInstance.pBack = true;
+//                    else if (directionalValue == 6.0f)
+//                        newSubInstance.pBackLeft = true;
+//                    else if (directionalValue == 7.0f)
+//                        newSubInstance.pLeft = true;
+//                    else if (directionalValue == 8.0f)
+//                        newSubInstance.pFrontLeft = true;
+//                }
+//
+//                // Cria um ModInstance "pai" para esta sub-animação
+//                ModInstance newModInstance;
+//                newModInstance.sourceModIndex = modIdx;
+//                newModInstance.isSelected = true;
+//                newModInstance.subAnimationInstances.push_back(newSubInstance);
+//
+//                // Adiciona na instância da categoria correta
+//                targetCategory->instances[instance_index - 1].modInstances.push_back(newModInstance);
+//            }
+//            break;
+//        }
+//    }
+//}
+
 
 // --- Lógica da Interface de Usuário ---
 void AnimationManager::DrawAddModModal() {
@@ -282,6 +403,33 @@ void AnimationManager::DrawAnimationManager() {
                         category.activeInstanceIndex = i;
                         CategoryInstance& instance = category.instances[i];
 
+                        std::map<SubAnimationInstance*, int> playlistNumbers;
+                        std::map<SubAnimationInstance*, int> parentNumbersForChildren;
+                        int currentPlaylistCounter = 1;
+                        int lastValidParentNumber = 0;
+
+                        for (auto& modInst : instance.modInstances) {
+                            if (!modInst.isSelected) continue;  // Pula movesets desativados
+
+                            for (auto& subInst : modInst.subAnimationInstances) {
+                                if (!subInst.isSelected) continue;  // Pula sub-movesets desativados
+
+                                // Sua lógica para determinar se é um "Pai"
+                                bool isParent = !(subInst.pFront || subInst.pBack || subInst.pLeft || subInst.pRight ||
+                                                  subInst.pFrontRight || subInst.pFrontLeft || subInst.pBackRight ||
+                                                  subInst.pBackLeft || subInst.pRandom || subInst.pDodge);
+
+                                if (isParent) {
+                                    lastValidParentNumber = currentPlaylistCounter;
+                                    playlistNumbers[&subInst] = currentPlaylistCounter;
+                                    currentPlaylistCounter++;
+                                } else {
+                                    // É um filho, armazena o número do seu pai
+                                    parentNumbersForChildren[&subInst] = lastValidParentNumber;
+                                }
+                            }
+                        }
+
                         // Botões de ação para a instância
                         if (ImGui::Button("Adicionar Moveset")) {
                             _isAddModModalOpen = true;
@@ -363,32 +511,19 @@ void AnimationManager::DrawAnimationManager() {
 
                                     std::string label;
 
-                                    // A lógica de numeração Pai/Filho agora só se aplica a itens SELECIONADOS.
-                                    if (!isChildDisabled) {
-                                        // Lógica de formatação do label (Pai vs Filho)
-                                        if (subInstance.pFront == false && subInstance.pBack == false &&
-                                            subInstance.pLeft == false && subInstance.pRight == false &&
-                                            subInstance.pFrontRight == false && subInstance.pFrontLeft == false &&
-                                            subInstance.pBackRight == false && subInstance.pBackLeft == false &&
-                                            subInstance.pRandom == false) {
-                                            // É um "Pai" (checkbox desmarcada)
-                                            lastParentNumber = playlistEntryCounter;  // Salva seu número
-                                            label = std::format("[{}] {}", playlistEntryCounter, originSubAnim.name);
-                                            playlistEntryCounter++;  // Incrementa para o próximo "Pai"
-                                        } else {
-                                            // É um "Filho" (checkbox marcada)
-                                            if (lastParentNumber > 0) {
-                                                // Se já existe um pai, usa o número dele com indentação
-                                                label =
-                                                    std::format(" -> [{}] {}", lastParentNumber, originSubAnim.name);
-                                            } else {
-                                                // Caso especial: é um filho sem pai acima dele
-                                                label = std::format(" -> [?] {}", originSubAnim.name);
-                                            }
+                                    // A lógica de contagem foi substituída pela busca no map
+                                    if (modInstance.isSelected && subInstance.isSelected) {
+                                        if (playlistNumbers.count(&subInstance)) {  // É um "Pai" com número calculado
+                                            label = std::format("[{}] {}", playlistNumbers.at(&subInstance),
+                                                                originSubAnim.name);
+                                        } else if (parentNumbersForChildren.count(&subInstance)) {  // É um "Filho"
+                                            int parentNum = parentNumbersForChildren.at(&subInstance);
+                                            label = std::format(" -> [{}] {}", parentNum, originSubAnim.name);
+                                        } else {  // Caso não esteja na contagem (é filho sem pai ou algo inesperado)
+                                            label = originSubAnim.name;
                                         }
                                     } else {
-                                        // Itens desmarcardos são exibidos sem número.
-                                        label = originSubAnim.name;
+                                        label = originSubAnim.name;  // Desativado, mostra sem número
                                     }
 
                                     // Adiciona o "by: author" se for de um mod diferente
@@ -435,6 +570,8 @@ void AnimationManager::DrawAnimationManager() {
                                     ImGui::Checkbox("BL", &subInstance.pBackLeft);
                                     ImGui::SameLine();
                                     ImGui::Checkbox("Rnd", &subInstance.pRandom);
+                                    ImGui::SameLine();                          
+                                    ImGui::Checkbox("Dodge", &subInstance.pDodge);  
 
                                     if (isChildDisabled) {
                                         ImGui::PopStyleColor();
@@ -445,7 +582,7 @@ void AnimationManager::DrawAnimationManager() {
 
                                 ImGui::TreePop();
 
-                            }  // 4. Removemos a cor no final, garantindo que o Push/Pop sempre aconteçam em par.
+                            }  
                             if (isParentDisabled) {
                                 ImGui::PopStyleColor();
                             }
@@ -511,10 +648,11 @@ void AnimationManager::SaveAllSettings() {
                         config.pBackLeft = subInstance.pBackLeft;
                         config.pRandom = subInstance.pRandom;
 
+
                         // Determina se é um "Pai" (nenhuma checkbox de direção marcada) ou "Filho"
-                        bool isParent =
-                            !(config.pFront || config.pBack || config.pLeft || config.pRight || config.pFrontRight ||
-                              config.pFrontLeft || config.pBackRight || config.pBackLeft || config.pRandom);
+                        bool isParent = !(config.pFront || config.pBack || config.pLeft || config.pRight ||
+                                          config.pFrontRight || config.pFrontLeft || config.pBackRight ||
+                                          config.pBackLeft || config.pRandom || config.pDodge);
 
                         if (isParent) {
                             lastParentOrder = playlistParentCounter;
@@ -626,19 +764,38 @@ void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
         }
 
         AddCompareValuesCondition(andConditions, "cycle_instance", config.instance_index, allocator);
+
+        // Apenas adiciona a condição de ordem se for um "Pai"
         if (config.order_in_playlist > 0) {
             AddCompareValuesCondition(andConditions, "testarone", config.order_in_playlist, allocator);
         }
 
-        if (config.pFront) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_F", true, allocator);
-        if (config.pBack) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_B", true, allocator);
-        if (config.pLeft) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_L", true, allocator);
-        if (config.pRight) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_R", true, allocator);
-        if (config.pFrontRight) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_FR", true, allocator);
-        if (config.pFrontLeft) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_FL", true, allocator);
-        if (config.pBackRight) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_BR", true, allocator);
-        if (config.pBackLeft) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_BL", true, allocator);
-        if (config.pRandom) AddCompareBoolCondition(andConditions, "CycleMovesetMovement_Random", true, allocator);
+        // --- NOVA LÓGICA DE CONDIÇÕES DIRECIONAIS E RANDOM ---
+
+        if (config.pRandom) {
+            // Usa a ordem da playlist (valor de "testarone") para a condição Random
+            int randomValue = (config.order_in_playlist > 0) ? config.order_in_playlist : 1;
+            AddRandomCondition(andConditions, randomValue, allocator);
+        } else {
+            // Se não for Random, verifica as direções.
+            // A checkbox pDodge é ignorada e não gera condições.
+            if (config.pFront)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 1, allocator);
+            else if (config.pFrontRight)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 2, allocator);
+            else if (config.pRight)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 3, allocator);
+            else if (config.pBackRight)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 4, allocator);
+            else if (config.pBack)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 5, allocator);
+            else if (config.pBackLeft)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 6, allocator);
+            else if (config.pLeft)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 7, allocator);
+            else if (config.pFrontLeft)
+                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 8, allocator);
+        }
 
         categoryAndBlock.AddMember("Conditions", andConditions, allocator);
         innerConditions.PushBack(categoryAndBlock, allocator);
@@ -700,228 +857,37 @@ void AnimationManager::AddCompareBoolCondition(rapidjson::Value& conditionsArray
 
     conditionsArray.PushBack(newCompare, allocator);
 }
-// Novas funcoes para usermovesets
 
-void AnimationManager::LoadUserMovesets() {
-    _userMovesets.clear();
-    const std::filesystem::path userMovesetsPath = "Data/SKSE/Plugins/CycleMovesets/UserMovesets.json";
+void AnimationManager::AddRandomCondition(rapidjson::Value& conditionsArray, int value,
+                                          rapidjson::Document::AllocatorType& allocator) {
+    rapidjson::Value newRandom(rapidjson::kObjectType);
+    newRandom.AddMember("condition", "Random", allocator);
+    newRandom.AddMember("requiredVersion", "2.3.0.0", allocator);
 
-    if (!std::filesystem::exists(userMovesetsPath)) {
-        SKSE::log::info("Arquivo UserMovesets.json não encontrado. Nenhum moveset de usuário carregado.");
-        return;
-    }
+    rapidjson::Value state(rapidjson::kObjectType);
+    state.AddMember("scope", "Local", allocator);
+    state.AddMember("shouldResetOnLoopOrEcho", true, allocator);
+    newRandom.AddMember("State", state, allocator);
 
-    std::ifstream fileStream(userMovesetsPath);
-    std::string jsonContent((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
-    fileStream.close();
+    rapidjson::Value minVal(rapidjson::kObjectType);
+    minVal.AddMember("value", static_cast<double>(value), allocator);
+    newRandom.AddMember("Minimum random value", minVal, allocator);
 
-    rapidjson::Document doc;
-    if (doc.Parse(jsonContent.c_str()).HasParseError() || !doc.IsArray()) {
-        SKSE::log::error("Erro ao fazer parse do UserMovesets.json.");
-        return;
-    }
+    rapidjson::Value maxVal(rapidjson::kObjectType);
+    maxVal.AddMember("value", static_cast<double>(value), allocator);
+    newRandom.AddMember("Maximum random value", maxVal, allocator);
 
-    for (const auto& userMovesetJson : doc.GetArray()) {
-        if (!userMovesetJson.IsObject()) continue;
+    newRandom.AddMember("Comparison", "==", allocator);
 
-        UserMoveset loadedMoveset;
-        if (userMovesetJson.HasMember("name") && userMovesetJson["name"].IsString()) {
-            loadedMoveset.name = userMovesetJson["name"].GetString();
-        }
+    rapidjson::Value numVal(rapidjson::kObjectType);
+    numVal.AddMember("graphVariable", "CycleMovesetsRandom", allocator);
+    numVal.AddMember("graphVariableType", "Float", allocator);
+    newRandom.AddMember("Numeric value", numVal, allocator);
 
-        if (userMovesetJson.HasMember("submovesets") && userMovesetJson["submovesets"].IsArray()) {
-            for (const auto& subAnimJson : userMovesetJson["submovesets"].GetArray()) {
-                SubAnimationInstance subInstance;
-                if (subAnimJson.HasMember("sourceModIndex") && subAnimJson["sourceModIndex"].IsUint()) {
-                    subInstance.sourceModIndex = subAnimJson["sourceModIndex"].GetUint();
-                }
-                if (subAnimJson.HasMember("sourceSubAnimIndex") && subAnimJson["sourceSubAnimIndex"].IsUint()) {
-                    subInstance.sourceSubAnimIndex = subAnimJson["sourceSubAnimIndex"].GetUint();
-                }
-                loadedMoveset.subAnimations.push_back(subInstance);
-            }
-        }
-        _userMovesets.push_back(loadedMoveset);
-    }
-    SKSE::log::info("{} movesets de usuário carregados.", _userMovesets.size());
+    conditionsArray.PushBack(newRandom, allocator);
 }
 
-void AnimationManager::SaveUserMovesets() {
-    const std::filesystem::path userMovesetsPath = "Data/SKSE/Plugins/CycleMovesets/UserMovesets.json";
-    std::filesystem::create_directories(userMovesetsPath.parent_path());
 
-    rapidjson::Document doc;
-    doc.SetArray();
-    auto& allocator = doc.GetAllocator();
 
-    for (const auto& userMoveset : _userMovesets) {
-        rapidjson::Value movesetObj(rapidjson::kObjectType);
-        movesetObj.AddMember("name", rapidjson::Value(userMoveset.name.c_str(), allocator), allocator);
+// Toda a parte de user ta ca pra baixo
 
-        rapidjson::Value subAnimsArray(rapidjson::kArrayType);
-        for (const auto& subAnim : userMoveset.subAnimations) {
-            rapidjson::Value subAnimObj(rapidjson::kObjectType);
-            subAnimObj.AddMember("sourceModIndex", rapidjson::Value(subAnim.sourceModIndex), allocator);
-            subAnimObj.AddMember("sourceSubAnimIndex", rapidjson::Value(subAnim.sourceSubAnimIndex), allocator);
-            subAnimsArray.PushBack(subAnimObj, allocator);
-        }
-        movesetObj.AddMember("submovesets", subAnimsArray, allocator);
-        doc.PushBack(movesetObj, allocator);
-    }
-
-    FILE* fp;
-    fopen_s(&fp, userMovesetsPath.string().c_str(), "wb");
-    if (!fp) {
-        SKSE::log::error("Falha ao salvar UserMovesets.json.");
-        return;
-    }
-    char writeBuffer[65536];
-    rapidjson::FileWriteStream os(fp, writeBuffer, sizeof(writeBuffer));
-    rapidjson::PrettyWriter<rapidjson::FileWriteStream> writer(os);
-    doc.Accept(writer);
-    fclose(fp);
-    SKSE::log::info("Movesets de usuário salvos com sucesso.");
-}
-
-// Hooks.cpp (adicionar estas novas funções)
-
-// Hooks.cpp (adicionar estas novas funções)
-
-void AnimationManager::DrawUserMovesetEditor() {
-    ImGui::Text("Editando o Moveset: %s", _workspaceMoveset.name.c_str());
-    ImGui::Separator();
-
-    if (ImGui::Button("Adicionar Sub-Moveset")) {
-        // Prepara o modal para adicionar ao nosso "workspace"
-        _isAddModModalOpen = true;
-        _instanceToAddTo = nullptr;
-        _modInstanceToAddTo = nullptr;
-        _userMovesetToAddTo = &_workspaceMoveset;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Salvar Moveset")) {
-        if (_editingMovesetIndex == -1) {  // Criando um novo
-            _userMovesets.push_back(_workspaceMoveset);
-        } else {  // Editando um existente
-            _userMovesets[_editingMovesetIndex] = _workspaceMoveset;
-        }
-        SaveUserMovesets();
-        RebuildUserMovesetLibrary();    // <-- refaz a lista
-        _isEditingUserMoveset = false;  // Volta para a tela de listagem
-        SKSE::log::info("Moveset '{}' salvo. Recarregue o menu para vê-lo na lista de 'Adicionar Moveset'.",
-                        _workspaceMoveset.name);
-        RE::DebugNotification("Moveset salvo! Recarregue o menu para usar.");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancelar")) {
-        _isEditingUserMoveset = false;  // Volta sem salvar
-    }
-    ImGui::Separator();
-
-    // Lista de sub-movesets no workspace
-    int subToRemove = -1;
-    for (size_t i = 0; i < _workspaceMoveset.subAnimations.size(); ++i) {
-        const auto& subInstance = _workspaceMoveset.subAnimations[i];
-        const auto& sourceMod = _allMods[subInstance.sourceModIndex];
-        const auto& sourceSubAnim = sourceMod.subAnimations[subInstance.sourceSubAnimIndex];
-
-        ImGui::PushID(static_cast<int>(i));
-        if (ImGui::Button("X")) {
-            subToRemove = static_cast<int>(i);
-        }
-        ImGui::SameLine();
-        ImGui::Text("%s (de: %s)", sourceSubAnim.name.c_str(), sourceMod.name.c_str());
-        ImGui::PopID();
-    }
-
-    if (subToRemove != -1) {
-        _workspaceMoveset.subAnimations.erase(_workspaceMoveset.subAnimations.begin() + subToRemove);
-    }
-}
-
-void AnimationManager::DrawUserMovesetManager() {
-    // Se estamos na tela de edição, desenha o editor e para por aqui.
-    if (_isEditingUserMoveset) {
-        DrawUserMovesetEditor();
-        return;
-    }
-
-    // --- Tela principal de listagem ---
-    if (ImGui::Button("Criar Novo Moveset")) {
-        ImGui::OpenPopup("Nomear Novo Moveset");
-        strcpy_s(_newMovesetNameBuffer, "");  // Limpa o buffer
-    }
-
-    // Popup para dar nome ao novo moveset
-    if (ImGui::BeginPopupModal("Nomear Novo Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::InputText("Nome", _newMovesetNameBuffer, 128);
-        if (ImGui::Button("Criar e Editar")) {
-            if (strlen(_newMovesetNameBuffer) > 0) {
-                _workspaceMoveset = UserMoveset{};  // Limpa o workspace
-                _workspaceMoveset.name = _newMovesetNameBuffer;
-                _editingMovesetIndex = -1;     // -1 significa que é um novo moveset
-                _isEditingUserMoveset = true;  // Muda para a tela de edição
-                ImGui::CloseCurrentPopup();
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancelar")) {
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
-
-    ImGui::Separator();
-    ImGui::Text("Meus Movesets Salvos:");
-
-    // Lista de movesets já criados
-    int movesetToRemove = -1;
-    for (size_t i = 0; i < _userMovesets.size(); ++i) {
-        const auto& userMoveset = _userMovesets[i];
-        ImGui::PushID(static_cast<int>(i));
-        ImGui::Text("%s", userMoveset.name.c_str());
-        ImGui::SameLine();
-        if (ImGui::Button("Editar")) {
-            _workspaceMoveset = userMoveset;  // Copia para o workspace
-            _editingMovesetIndex = static_cast<int>(i);
-            _isEditingUserMoveset = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Remover")) {
-            movesetToRemove = static_cast<int>(i);
-        }
-        ImGui::PopID();
-    }
-
-    if (movesetToRemove != -1) {
-        _userMovesets.erase(_userMovesets.begin() + movesetToRemove);
-        SaveUserMovesets();  // Salva a remoção
-    }
-}
-
-// Hooks.cpp (adicione esta nova função em qualquer lugar com as outras definições de função)
-
-void AnimationManager::RebuildUserMovesetLibrary() {
-    SKSE::log::info("Reconstruindo a biblioteca de movesets do usuário em tempo real...");
-
-    // Remove todos os mods que foram previamente adicionados como "Usuário" para evitar duplicatas
-    std::erase_if(_allMods, [](const AnimationModDef& mod) { return mod.author == "Usuário"; });
-
-    // Readiciona os movesets da lista _userMovesets (que está atualizada em memória)
-    for (const auto& userMoveset : _userMovesets) {
-        AnimationModDef modDef;
-        modDef.name = userMoveset.name;
-        modDef.author = "Usuário";
-
-        for (const auto& subInstance : userMoveset.subAnimations) {
-            if (subInstance.sourceModIndex < _allMods.size()) {
-                const auto& sourceMod = _allMods[subInstance.sourceModIndex];
-                if (subInstance.sourceSubAnimIndex < sourceMod.subAnimations.size()) {
-                    modDef.subAnimations.push_back(sourceMod.subAnimations[subInstance.sourceSubAnimIndex]);
-                }
-            }
-        }
-        _allMods.push_back(modDef);
-    }
-    SKSE::log::info("Biblioteca reconstruída. Total de {} mods.", _allMods.size());
-}

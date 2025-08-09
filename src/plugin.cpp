@@ -10,6 +10,7 @@
 #include "SKSEMCP/SKSEMenuFramework.hpp"
 #include "Manager.h"
 #include "Hooks.h"
+#include "Serialization.h"
 
 namespace fs = std::filesystem;
 
@@ -107,10 +108,22 @@ namespace GlobalControl {
     }
 }
 
+
+
+
 void OnMessage(SKSE::MessagingInterface::Message* message) {
+    if (message->type == SKSE::MessagingInterface::kInputLoaded) {
+        auto* inputDeviceManager = RE::BSInputDeviceManager::GetSingleton();
+        if (inputDeviceManager) {
+            inputDeviceManager->AddEventSink(InputListener::GetSingleton());
+            SKSE::log::info("Listener de input registrado com sucesso!");
+        }
+    }
+
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
 
     }
+
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
         // 2. Requisitar um ClientID da API SkyPrompt
         GlobalControl::g_clientID = SkyPromptAPI::RequestClientID();
@@ -142,12 +155,12 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
         SKSE::log::info("Ouvinte de eventos de acao registrado com sucesso!");
     }
 
-        // 1. Escaneia os arquivos de animação para carregar os dados.
-    // É importante fazer isso antes que o menu possa ser aberto.
+     // 1. Escaneia os arquivos de animação para carregar os dados.
     AnimationManager::GetSingleton().ScanAnimationMods();
 
     // 2. ALTERAÇÃO AQUI: Chame a função para registrar o menu no framework.
     UI::RegisterMenu();
+
 
 
     return true;
