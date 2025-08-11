@@ -16,6 +16,9 @@ public:
 private:
     std::map<std::string, WeaponCategory> _categories;
     std::vector<AnimationModDef> _allMods;
+
+    // Armazena os caminhos de todos os config.json que nosso manager já tocou.
+    std::set<std::filesystem::path> _managedFiles; 
     bool _preserveConditions = false;
     bool _isAddModModalOpen = false;
     CategoryInstance* _instanceToAddTo = nullptr;
@@ -37,6 +40,9 @@ private:
     // Função do random aqui
     void AddRandomCondition(rapidjson::Value& conditionsArray, int value,
                                               rapidjson::Document::AllocatorType& allocator);
+    // Para colocar direcionais no pai
+    void AddNegatedCompareValuesCondition(rapidjson::Value& conditionsArray, const std::string& graphVarName, int value,
+                                          rapidjson::Document::AllocatorType& allocator);
 
     // --- NOVAS VARIÁVEIS PARA GERENCIAR MOVESETS DO USUÁRIO ---
 
@@ -72,6 +78,15 @@ private:
     char _subMovesetFilter[128] = "";
     // Da load na ordem dos movesets e submovesets
     void LoadStateForSubAnimation(size_t modIdx, size_t subAnimIdx);
+
+    // --- NOVAS FUNÇÕES DE CARREGAMENTO/SALVAMENTO DA UI ---
+    void LoadStanceConfigurations();
+    void SaveStanceConfigurations();
+
+    // Função auxiliar para encontrar um mod pelo nome
+    std::optional<size_t> FindModIndexByName(const std::string& name);
+    // Função auxiliar para encontrar uma sub-animação pelo nome dentro de um mod
+    std::optional<size_t> FindSubAnimIndexByName(size_t modIdx, const std::string& name);
 };
 
 struct FileSaveConfig {
@@ -79,6 +94,9 @@ struct FileSaveConfig {
     int order_in_playlist;
     const WeaponCategory* category;
     // Campos adicionados para carregar o estado das checkboxes
+    bool isParent = false;
+
+
     bool pFront = false;
     bool pBack = false;
     bool pLeft = false;

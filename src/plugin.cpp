@@ -1,15 +1,7 @@
 #include "logger.h"
 #include "Utils.h"
-#include "rapidjson/document.h"
-#include "rapidjson/error/en.h"
-#include <cstdio>  // Para FILE*
 #include "Events.h"
-#include "rapidjson/filewritestream.h"
-#include "rapidjson/prettywriter.h"
-#include "Settings.h"
-#include "SKSEMCP/SKSEMenuFramework.hpp"
 #include "Manager.h"
-#include "Hooks.h"
 #include "Serialization.h"
 
 namespace fs = std::filesystem;
@@ -113,11 +105,6 @@ namespace GlobalControl {
 
 void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kInputLoaded) {
-        auto* inputDeviceManager = RE::BSInputDeviceManager::GetSingleton();
-        if (inputDeviceManager) {
-            inputDeviceManager->AddEventSink(InputListener::GetSingleton());
-            SKSE::log::info("Listener de input registrado com sucesso!");
-        }
     }
 
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
@@ -126,6 +113,11 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
 
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
         // 2. Requisitar um ClientID da API SkyPrompt
+        auto* inputDeviceManager = RE::BSInputDeviceManager::GetSingleton();
+        if (inputDeviceManager) {
+            inputDeviceManager->AddEventSink(InputListener::GetSingleton());
+            SKSE::log::info("Listener de input registrado com sucesso!");
+        }
         GlobalControl::g_clientID = SkyPromptAPI::RequestClientID();
         if (GlobalControl::g_clientID > 0) {
             SKSE::log::info("ClientID {} recebido da SkyPromptAPI.", GlobalControl::g_clientID);

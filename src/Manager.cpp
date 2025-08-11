@@ -31,21 +31,35 @@ void AnimationManager::LoadUserMovesets() {
     }
 
     for (const auto& userMovesetJson : doc.GetArray()) {
-        if (!userMovesetJson.IsObject()) continue;
-
         UserMoveset loadedMoveset;
-        if (userMovesetJson.HasMember("name") && userMovesetJson["name"].IsString()) {
+        if (userMovesetJson.HasMember("name")) {
             loadedMoveset.name = userMovesetJson["name"].GetString();
         }
 
         if (userMovesetJson.HasMember("submovesets") && userMovesetJson["submovesets"].IsArray()) {
             for (const auto& subAnimJson : userMovesetJson["submovesets"].GetArray()) {
                 SubAnimationInstance subInstance;
-                if (subAnimJson.HasMember("sourceModIndex") && subAnimJson["sourceModIndex"].IsUint()) {
-                    subInstance.sourceModIndex = subAnimJson["sourceModIndex"].GetUint();
-                }
-                if (subAnimJson.HasMember("sourceSubAnimIndex") && subAnimJson["sourceSubAnimIndex"].IsUint()) {
-                    subInstance.sourceSubAnimIndex = subAnimJson["sourceSubAnimIndex"].GetUint();
+                // Preenche com os nomes salvos do JSON
+                subInstance.sourceModName = subAnimJson["sourceModName"].GetString();
+                subInstance.sourceSubName = subAnimJson["sourceSubName"].GetString();
+
+                // ---> INÍCIO DA CORREÇÃO <---
+                // Agora, usamos os nomes para encontrar e preencher os índices para uso em tempo de execução.
+                auto modIdxOpt = FindModIndexByName(subInstance.sourceModName);
+                if (modIdxOpt) {
+                    subInstance.sourceModIndex = *modIdxOpt;  // Preenche o índice do mod
+                    auto subAnimIdxOpt = FindSubAnimIndexByName(*modIdxOpt, subInstance.sourceSubName);
+                    if (subAnimIdxOpt) {
+                        subInstance.sourceSubAnimIndex = *subAnimIdxOpt;  // Preenche o índice da sub-animação
+                    } else {
+                        SKSE::log::warn("Sub-animação '{}' do moveset de usuário não encontrada no mod '{}'. Pulando.",
+                                        subInstance.sourceSubName, subInstance.sourceModName);
+                        continue;  // Pula esta sub-animação se não for encontrada
+                    }
+                } else {
+                    SKSE::log::warn("Mod '{}' do moveset de usuário não encontrado. Pulando sub-animação.",
+                                    subInstance.sourceModName);
+                    continue;  // Pula esta sub-animação se o mod pai não for encontrado
                 }
                 loadedMoveset.subAnimations.push_back(subInstance);
             }
@@ -63,15 +77,26 @@ void AnimationManager::SaveUserMovesets() {
     doc.SetArray();
     auto& allocator = doc.GetAllocator();
 
-    for (const auto& userMoveset : _userMovesets) {
+     for (const auto& userMoveset : _userMovesets) {
         rapidjson::Value movesetObj(rapidjson::kObjectType);
         movesetObj.AddMember("name", rapidjson::Value(userMoveset.name.c_str(), allocator), allocator);
 
         rapidjson::Value subAnimsArray(rapidjson::kArrayType);
         for (const auto& subAnim : userMoveset.subAnimations) {
+            // Encontra a definição original para obter o caminho
+            const auto& originMod = _allMods[subAnim.sourceModIndex];
+            const auto& originSubAnim = originMod.subAnimations[subAnim.sourceSubAnimIndex];
+
             rapidjson::Value subAnimObj(rapidjson::kObjectType);
-            subAnimObj.AddMember("sourceModIndex", rapidjson::Value(subAnim.sourceModIndex), allocator);
-            subAnimObj.AddMember("sourceSubAnimIndex", rapidjson::Value(subAnim.sourceSubAnimIndex), allocator);
+            // Salva os nomes e o caminho, conforme seu novo formato
+            subAnimObj.AddMember("sourceModName", rapidjson::Value(originMod.name.c_str(), allocator), allocator);
+            subAnimObj.AddMember("sourceSubName", rapidjson::Value(originSubAnim.name.c_str(), allocator), allocator);
+            subAnimObj.AddMember("sourceConfigPath", rapidjson::Value(originSubAnim.path.string().c_str(), allocator),
+                                 allocator);
+
+            // Nota: As checkboxes como pLeft não são salvas AQUI. Elas são salvas no _Cycle.json
+            // quando este user_moveset é adicionado a uma stance. O UserMovesets.json é um "template".
+
             subAnimsArray.PushBack(subAnimObj, allocator);
         }
         movesetObj.AddMember("submovesets", subAnimsArray, allocator);
@@ -219,10 +244,11 @@ void AnimationManager::RebuildUserMovesetLibrary() {
         modDef.author = "Usuário";
 
         for (const auto& subInstance : userMoveset.subAnimations) {
-            if (subInstance.sourceModIndex < _allMods.size()) {
-                const auto& sourceMod = _allMods[subInstance.sourceModIndex];
-                if (subInstance.sourceSubAnimIndex < sourceMod.subAnimations.size()) {
-                    modDef.subAnimations.push_back(sourceMod.subAnimations[subInstance.sourceSubAnimIndex]);
+            auto modIdxOpt = FindModIndexByName(subInstance.sourceModName);
+            if (modIdxOpt) {
+                auto subAnimIdxOpt = FindSubAnimIndexByName(*modIdxOpt, subInstance.sourceSubName);
+                if (subAnimIdxOpt) {
+                    modDef.subAnimations.push_back(_allMods[*modIdxOpt].subAnimations[*subAnimIdxOpt]);
                 }
             }
         }

@@ -8,6 +8,7 @@
 #include "rapidjson/error/en.h"
 #include "rapidjson/filewritestream.h"
 #include "rapidjson/prettywriter.h"
+#include "rapidjson/filereadstream.h"
 
 AnimationManager& AnimationManager::GetSingleton() {
     static AnimationManager instance;
@@ -58,6 +59,24 @@ void AnimationManager::ScanAnimationMods() {
     }
     SKSE::log::info("Escaneamento de arquivos finalizado. {} mods carregados.", _allMods.size());
 
+    
+    // Agora que temos todos os mods, vamos encontrar quais arquivos já gerenciamos.
+    SKSE::log::info("Verificando arquivos previamente gerenciados...");
+    _managedFiles.clear();
+    for (const auto& mod : _allMods) {
+        for (const auto& subAnim : mod.subAnimations) {
+            if (std::filesystem::exists(subAnim.path)) {
+                std::ifstream fileStream(subAnim.path);
+                std::string content((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
+                fileStream.close();
+                if (content.find("OAR_CYCLE_MANAGER_CONDITIONS") != std::string::npos) {
+                    _managedFiles.insert(subAnim.path);
+                }
+            }
+        }
+    }
+    SKSE::log::info("Encontrados {} arquivos gerenciados.", _managedFiles.size());
+
     // --- NOVA SEÇÃO: Carregar e integrar movesets do usuário ---
     LoadUserMovesets();
 
@@ -79,6 +98,9 @@ void AnimationManager::ScanAnimationMods() {
         _allMods.push_back(modDef);
     }
     SKSE::log::info("Integração finalizada. Total de {} mods na biblioteca (incluindo de usuário).", _allMods.size());
+    // -- -NOVA CHAMADA-- -
+        // Agora que a biblioteca de mods (_allMods) está completa, carregamos a configuração da UI.
+        LoadStanceConfigurations();
 }
 
 void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) {
@@ -108,123 +130,7 @@ void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) 
 }
 
 
-//void AnimationManager::LoadStateForSubAnimation(size_t modIdx, size_t subAnimIdx) {
-//    const auto& subAnimDef = _allMods[modIdx].subAnimations[subAnimIdx];
-//    const auto& jsonPath = subAnimDef.path;
-//
-//    if (!std::filesystem::exists(jsonPath)) return;
-//
-//    std::ifstream fileStream(jsonPath);
-//    std::string jsonContent((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
-//    fileStream.close();
-//
-//    rapidjson::Document doc;
-//    if (doc.Parse(jsonContent.c_str()).HasParseError() || !doc.IsObject() || !doc.HasMember("conditions")) {
-//        return;
-//    }
-//
-//    const rapidjson::Value& conditions = doc["conditions"];
-//    if (!conditions.IsArray()) return;
-//
-//    // Encontra o nosso bloco de condições gerenciado
-//    for (const auto& topCond : conditions.GetArray()) {
-//        if (topCond.IsObject() && topCond.HasMember("comment") &&
-//            strcmp(topCond["comment"].GetString(), "OAR_CYCLE_MANAGER_CONDITIONS") == 0 &&
-//            topCond.HasMember("Conditions") && topCond["Conditions"].IsArray()) {
-//            const rapidjson::Value& andBlocks = topCond["Conditions"];
-//            // Cada bloco AND corresponde a uma configuração salva para esta animação
-//            for (const auto& andBlock : andBlocks.GetArray()) {
-//                if (!andBlock.IsObject() || !andBlock.HasMember("Conditions") || !andBlock["Conditions"].IsArray())
-//                    continue;
-//
-//                // Extrai os dados do bloco
-//                double equippedTypeValue = 0.0;
-//                bool isDual = false;
-//                int instance_index = 0;
-//                float directionalValue = 0.0;
-//                int randomValue = 0;
-//
-//                const rapidjson::Value& finalConditions = andBlock["Conditions"];
-//                for (const auto& cond : finalConditions.GetArray()) {
-//                    if (!cond.IsObject() || !cond.HasMember("condition")) continue;
-//                    std::string condName = cond["condition"].GetString();
-//
-//                    if (condName == "IsEquippedType" && cond.HasMember("Type")) {
-//                        equippedTypeValue = cond["Type"]["value"].GetDouble();
-//                        if (cond.HasMember("Left hand") && cond["Left hand"].GetBool()) {
-//                            isDual = true;
-//                        }
-//                    }
-//                    if (condName == "CompareValues" && cond.HasMember("Value B")) {
-//                        std::string varName = cond["Value B"]["graphVariable"].GetString();
-//                        if (varName == "cycle_instance") instance_index = cond["Value A"]["value"].GetInt();
-//                        if (varName == "DirecionalCycleMoveset") directionalValue = cond["Value A"]["value"].GetFloat();
-//                    }
-//                    if (condName == "Random") {
-//                        if (cond.HasMember("Minimum random value"))
-//                            randomValue = cond["Minimum random value"]["value"].GetInt();
-//                    }
-//                }
-//
-//                // Se não encontramos dados válidos, pulamos
-//                if (instance_index == 0) continue;
-//
-//                // Encontra a categoria correta
-//                WeaponCategory* targetCategory = nullptr;
-//                for (auto& pair : _categories) {
-//                    if (pair.second.equippedTypeValue == equippedTypeValue && pair.second.isDualWield == isDual) {
-//                        targetCategory = &pair.second;
-//                        break;
-//                    }
-//                }
-//                if (!targetCategory) continue;
-//                // Se o índice da instância que queremos acessar não existe ainda no vetor...
-//                if (instance_index < 1 || instance_index > 4) {
-//                    // Se o índice for inválido (ex: 0, 5, etc.), pula para a próxima iteração do loop.
-//                    SKSE::log::warn("Índice de instância inválido ({}) encontrado no JSON. Ignorando.",
-//                                    instance_index);  // Log opcional para debug
-//                    continue;
-//                }
-//                // Cria a instância da sub-animação com os dados carregados
-//                SubAnimationInstance newSubInstance;
-//                newSubInstance.sourceModIndex = modIdx;
-//                newSubInstance.sourceSubAnimIndex = subAnimIdx;
-//                newSubInstance.isSelected = true;  // Se está salva, está selecionada
-//
-//                if (randomValue > 0) {
-//                    newSubInstance.pRandom = true;
-//                } else if (directionalValue > 0.0f) {
-//                    if (directionalValue == 1.0f)
-//                        newSubInstance.pFront = true;
-//                    else if (directionalValue == 2.0f)
-//                        newSubInstance.pFrontRight = true;
-//                    else if (directionalValue == 3.0f)
-//                        newSubInstance.pRight = true;
-//                    else if (directionalValue == 4.0f)
-//                        newSubInstance.pBackRight = true;
-//                    else if (directionalValue == 5.0f)
-//                        newSubInstance.pBack = true;
-//                    else if (directionalValue == 6.0f)
-//                        newSubInstance.pBackLeft = true;
-//                    else if (directionalValue == 7.0f)
-//                        newSubInstance.pLeft = true;
-//                    else if (directionalValue == 8.0f)
-//                        newSubInstance.pFrontLeft = true;
-//                }
-//
-//                // Cria um ModInstance "pai" para esta sub-animação
-//                ModInstance newModInstance;
-//                newModInstance.sourceModIndex = modIdx;
-//                newModInstance.isSelected = true;
-//                newModInstance.subAnimationInstances.push_back(newSubInstance);
-//
-//                // Adiciona na instância da categoria correta
-//                targetCategory->instances[instance_index - 1].modInstances.push_back(newModInstance);
-//            }
-//            break;
-//        }
-//    }
-//}
+
 
 
 // --- Lógica da Interface de Usuário ---
@@ -332,6 +238,10 @@ void AnimationManager::DrawAddModModal() {
                                     SubAnimationInstance newSubInstance;
                                     newSubInstance.sourceModIndex = modIdx;
                                     newSubInstance.sourceSubAnimIndex = subAnimIdx;
+                                    const auto& sourceMod = _allMods[modIdx];
+                                    const auto& sourceSubAnim = sourceMod.subAnimations[subAnimIdx];
+                                    newSubInstance.sourceModName = sourceMod.name;
+                                    newSubInstance.sourceSubName = sourceSubAnim.name;
                                     if (_modInstanceToAddTo) {  // Se estamos adicionando a um ModInstance (sistema
                                                                 // antigo)
                                         _modInstanceToAddTo->subAnimationInstances.push_back(newSubInstance);
@@ -439,7 +349,7 @@ void AnimationManager::DrawAnimationManager() {
                         ImGui::Separator();
 
                         int modInstanceToRemove = -1;
-                        int playlistEntryCounter = 1;  // Contador apenas para "Pais"
+                        //int playlistEntryCounter = 1;  // Contador apenas para "Pais"
                         // Loop para os Movesets (ModInstance)
                         for (size_t mod_i = 0; mod_i < instance.modInstances.size(); ++mod_i) {
                             auto& modInstance = instance.modInstances[mod_i];
@@ -486,7 +396,7 @@ void AnimationManager::DrawAnimationManager() {
                                 }
                                 // Estas variáveis agora controlam a lógica de agrupamento
 
-                                int lastParentNumber = 0;   // Armazena o número do último "Pai"
+                                //int lastParentNumber = 0;   // Armazena o número do último "Pai"
                                 // NOVO: Variável para marcar um sub-moveset para remoção
                                 //int subInstanceToRemove = -1;
 
@@ -607,6 +517,8 @@ void AnimationManager::DrawAnimationManager() {
 
 void AnimationManager::SaveAllSettings() {
     SKSE::log::info("Iniciando salvamento global de todas as configurações...");
+    SaveStanceConfigurations();
+    SKSE::log::info("Gerando arquivos de condição para OAR...");
     std::map<std::filesystem::path, std::vector<FileSaveConfig>> fileUpdates;
 
     // 1. Loop através de cada CATEGORIA de arma
@@ -616,13 +528,13 @@ void AnimationManager::SaveAllSettings() {
         // 2. Loop através de cada uma das 4 INSTÂNCIAS
         for (int i = 0; i < 4; ++i) {
             CategoryInstance& instance = category.instances[i];
-
+            int playlistParentCounter = 1;  // Contador para os itens "Pai"
+            int lastParentOrder = 0;        // Armazena o número do último "Pai"
             // 3. Loop através dos MOVESETS (ModInstance) na instância
             for (size_t mod_i = 0; mod_i < instance.modInstances.size(); ++mod_i) {
                 ModInstance& modInstance = instance.modInstances[mod_i];
 
-                int playlistParentCounter = 1;  // Contador para os itens "Pai"
-                int lastParentOrder = 0;        // Armazena o número do último "Pai"
+                
 
                 // 4. Loop através dos SUB-MOVESETS (SubAnimationInstance)
                 for (size_t sub_j = 0; sub_j < modInstance.subAnimationInstances.size(); ++sub_j) {
@@ -654,6 +566,8 @@ void AnimationManager::SaveAllSettings() {
                                           config.pFrontRight || config.pFrontLeft || config.pBackRight ||
                                           config.pBackLeft || config.pRandom || config.pDodge);
 
+                        config.isParent = isParent;
+
                         if (isParent) {
                             lastParentOrder = playlistParentCounter;
                             config.order_in_playlist = playlistParentCounter++;
@@ -668,6 +582,19 @@ void AnimationManager::SaveAllSettings() {
                 }
             }
         }
+    }
+    // Agora, verifique todos os arquivos que já gerenciamos.
+    // Se algum deles não estiver na lista de atualizações ativas,
+    // significa que ele foi removido e precisa ser desativado.
+    for (const auto& managedPath : _managedFiles) {
+        // Se o arquivo não está no mapa de atualizações, adicione-o com um vetor vazio.
+        if (fileUpdates.find(managedPath) == fileUpdates.end()) {
+            fileUpdates[managedPath] = {};  // Adiciona para a fila de desativação
+        }
+    }
+    // Adiciona todos os novos arquivos à lista de gerenciados para o futuro.
+    for (const auto& pair : fileUpdates) {
+        _managedFiles.insert(pair.first);
     }
 
     SKSE::log::info("{} arquivos de configuração serão modificados.", fileUpdates.size());
@@ -699,9 +626,41 @@ void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
     if (!doc.IsObject()) doc.SetObject();
     auto& allocator = doc.GetAllocator();
 
+    // ---> INÍCIO DA NOVA LÓGICA DE PRIORIDADE <---
+
+    // 1. Lê a prioridade base do arquivo. Se não existir, usa um valor padrão (ex: 0).
+    int basePriority = 20000000;
+    if (doc.HasMember("priority") && doc["priority"].IsInt()) {
+        basePriority;  //= doc["priority"].GetInt();
+    }
+
+    // 2. Determina se esta animação está sendo usada como "mãe" em QUALQUER uma das configurações.
+    bool isUsedAsParent = false;
+    for (const auto& config : configs) {
+        if (config.isParent) {
+            isUsedAsParent = true;
+            break;  // Se encontrarmos um uso como "mãe", já podemos parar.
+        }
+    }
+
+    // 3. Define a prioridade final. Se for usada como mãe, mantém a base.
+    //    Se for usada APENAS como filha, incrementa a prioridade para garantir que ela sobrescreva a mãe.
+    int finalPriority = isUsedAsParent ? basePriority : basePriority + 1;
+
+    // 4. Aplica a prioridade final ao documento JSON.
+    if (doc.HasMember("priority")) {
+        doc["priority"].SetInt(finalPriority);
+    } else {
+        doc.AddMember("priority", finalPriority, allocator);
+    }
+
     rapidjson::Value oldConditions(rapidjson::kArrayType);
     if (_preserveConditions && doc.HasMember("conditions") && doc["conditions"].IsArray()) {
-        for (const auto& cond : doc["conditions"].GetArray()) {
+        for (auto& cond : doc["conditions"].GetArray()) {
+            if (cond.IsObject() && cond.HasMember("comment") && cond["comment"] == "OAR_CYCLE_MANAGER_CONDITIONS") {
+                // Pula o nosso próprio bloco ao preservar, pois ele será reescrito
+                continue;
+            }
             rapidjson::Value c;
             c.CopyFrom(cond, allocator);
             oldConditions.PushBack(c, allocator);
@@ -723,85 +682,147 @@ void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
         conditions.PushBack(oldConditionsBlock, allocator);
     }
 
-    rapidjson::Value masterOrBlock(rapidjson::kObjectType);
-    masterOrBlock.AddMember("condition", "OR", allocator);
-    masterOrBlock.AddMember("comment", "OAR_CYCLE_MANAGER_CONDITIONS", allocator);
-    rapidjson::Value innerConditions(rapidjson::kArrayType);
-
+    // Passo 1: Mapear todas as direções usadas pelas "filhas" para cada "mãe" (playlist).
+    // A chave do mapa é o 'order_in_playlist', o valor é um set com os números das direções.
+    std::map<int, std::set<int>> childDirectionsByPlaylist;
     for (const auto& config : configs) {
-        rapidjson::Value categoryAndBlock(rapidjson::kObjectType);
-        categoryAndBlock.AddMember("condition", "AND", allocator);
-        rapidjson::Value andConditions(rapidjson::kArrayType);
-
-        {
-            rapidjson::Value actorBase(rapidjson::kObjectType);
-            actorBase.AddMember("condition", "IsActorBase", allocator);
-            rapidjson::Value actorBaseParams(rapidjson::kObjectType);
-            actorBaseParams.AddMember("pluginName", "Skyrim.esm", allocator);
-            actorBaseParams.AddMember("formID", "7", allocator);
-            actorBase.AddMember("Actor base", actorBaseParams, allocator);
-            andConditions.PushBack(actorBase, allocator);
+        if (!config.isParent) {
+            int playlistId = config.order_in_playlist;
+            if (playlistId > 0) {  // Garante que é uma filha de uma playlist válida
+                if (config.pFront) childDirectionsByPlaylist[playlistId].insert(1);
+                if (config.pFrontRight) childDirectionsByPlaylist[playlistId].insert(2);
+                if (config.pRight) childDirectionsByPlaylist[playlistId].insert(3);
+                if (config.pBackRight) childDirectionsByPlaylist[playlistId].insert(4);
+                if (config.pBack) childDirectionsByPlaylist[playlistId].insert(5);
+                if (config.pBackLeft) childDirectionsByPlaylist[playlistId].insert(6);
+                if (config.pLeft) childDirectionsByPlaylist[playlistId].insert(7);
+                if (config.pFrontLeft) childDirectionsByPlaylist[playlistId].insert(8);
+            }
         }
-        {
-            rapidjson::Value equippedType(rapidjson::kObjectType);
-            equippedType.AddMember("condition", "IsEquippedType", allocator);
-            rapidjson::Value typeVal(rapidjson::kObjectType);
-            typeVal.AddMember("value", config.category->equippedTypeValue, allocator);
-            equippedType.AddMember("Type", typeVal, allocator);
-            equippedType.AddMember("Left hand", false, allocator);  // Condição da mão direita (sempre presente)
-            andConditions.PushBack(equippedType, allocator);
-        }
-
-        // MUDANÇA: Substituído o caso especial de adagas por uma verificação genérica "isDualWield".
-        if (config.category->isDualWield) {
-            rapidjson::Value equippedTypeL(rapidjson::kObjectType);
-            equippedTypeL.AddMember("condition", "IsEquippedType", allocator);
-            rapidjson::Value typeValL(rapidjson::kObjectType);
-            typeValL.AddMember("value", config.category->equippedTypeValue, allocator);
-            equippedTypeL.AddMember("Type", typeValL, allocator);
-            equippedTypeL.AddMember("Left hand", true, allocator);  // Adiciona a condição da mão esquerda
-            andConditions.PushBack(equippedTypeL, allocator);
-        }
-
-        AddCompareValuesCondition(andConditions, "cycle_instance", config.instance_index, allocator);
-
-        // Apenas adiciona a condição de ordem se for um "Pai"
-        if (config.order_in_playlist > 0) {
-            AddCompareValuesCondition(andConditions, "testarone", config.order_in_playlist, allocator);
-        }
-
-        // --- NOVA LÓGICA DE CONDIÇÕES DIRECIONAIS E RANDOM ---
-
-        if (config.pRandom) {
-            // Usa a ordem da playlist (valor de "testarone") para a condição Random
-            int randomValue = (config.order_in_playlist > 0) ? config.order_in_playlist : 1;
-            AddRandomCondition(andConditions, randomValue, allocator);
-        } else {
-            // Se não for Random, verifica as direções.
-            // A checkbox pDodge é ignorada e não gera condições.
-            if (config.pFront)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 1, allocator);
-            else if (config.pFrontRight)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 2, allocator);
-            else if (config.pRight)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 3, allocator);
-            else if (config.pBackRight)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 4, allocator);
-            else if (config.pBack)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 5, allocator);
-            else if (config.pBackLeft)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 6, allocator);
-            else if (config.pLeft)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 7, allocator);
-            else if (config.pFrontLeft)
-                AddCompareValuesCondition(andConditions, "DirecionalCycleMoveset", 8, allocator);
-        }
-
-        categoryAndBlock.AddMember("Conditions", andConditions, allocator);
-        innerConditions.PushBack(categoryAndBlock, allocator);
     }
 
-    if (!innerConditions.Empty()) {
+
+    if (!configs.empty()) {
+        
+        rapidjson::Value masterOrBlock(rapidjson::kObjectType);
+        masterOrBlock.AddMember("condition", "OR", allocator);
+        masterOrBlock.AddMember("comment", "OAR_CYCLE_MANAGER_CONDITIONS", allocator);
+        rapidjson::Value innerConditions(rapidjson::kArrayType);
+
+        for (const auto& config : configs) {
+            rapidjson::Value categoryAndBlock(rapidjson::kObjectType);
+            categoryAndBlock.AddMember("condition", "AND", allocator);
+            rapidjson::Value andConditions(rapidjson::kArrayType);
+
+            {
+                rapidjson::Value actorBase(rapidjson::kObjectType);
+                actorBase.AddMember("condition", "IsActorBase", allocator);
+                rapidjson::Value actorBaseParams(rapidjson::kObjectType);
+                actorBaseParams.AddMember("pluginName", "Skyrim.esm", allocator);
+                actorBaseParams.AddMember("formID", "7", allocator);
+                actorBase.AddMember("Actor base", actorBaseParams, allocator);
+                andConditions.PushBack(actorBase, allocator);
+            }
+            {
+                rapidjson::Value equippedType(rapidjson::kObjectType);
+                equippedType.AddMember("condition", "IsEquippedType", allocator);
+                rapidjson::Value typeVal(rapidjson::kObjectType);
+                typeVal.AddMember("value", config.category->equippedTypeValue, allocator);
+                equippedType.AddMember("Type", typeVal, allocator);
+                equippedType.AddMember("Left hand", false, allocator);  // Condição da mão direita (sempre presente)
+                andConditions.PushBack(equippedType, allocator);
+            }
+
+            // MUDANÇA: Substituído o caso especial de adagas por uma verificação genérica "isDualWield".
+            if (config.category->isDualWield) {
+                rapidjson::Value equippedTypeL(rapidjson::kObjectType);
+                equippedTypeL.AddMember("condition", "IsEquippedType", allocator);
+                rapidjson::Value typeValL(rapidjson::kObjectType);
+                typeValL.AddMember("value", config.category->equippedTypeValue, allocator);
+                equippedTypeL.AddMember("Type", typeValL, allocator);
+                equippedTypeL.AddMember("Left hand", true, allocator);  // Adiciona a condição da mão esquerda
+                andConditions.PushBack(equippedTypeL, allocator);
+            }
+
+            AddCompareValuesCondition(andConditions, "cycle_instance", config.instance_index, allocator);
+
+            // Apenas adiciona a condição de ordem se for um "Pai"
+            if (config.order_in_playlist > 0) {
+                AddCompareValuesCondition(andConditions, "testarone", config.order_in_playlist, allocator);
+                if (config.isParent) {
+                    // LÓGICA DA MÃE: Adicionar condições negadas para cada direção de filha.
+                    const auto& childDirs = childDirectionsByPlaylist[config.order_in_playlist];
+                    if (!childDirs.empty()) {
+                        for (int dirValue : childDirs) {
+                            AddNegatedCompareValuesCondition(andConditions, "DirecionalCycleMoveset", dirValue,
+                                                             allocator);
+                        }
+                    }
+                } else {
+                    // ---> LÓGICA DE ATIVAÇÃO CORRIGIDA (RANDOM + DIRECIONAL) <---
+
+                    // 1. Adiciona a condição Random se a checkbox estiver marcada.
+                    //    Esta condição é adicionada diretamente ao bloco AND principal.
+                    if (config.pRandom) {
+                        AddRandomCondition(andConditions, config.order_in_playlist, allocator);
+                    }
+
+                    // 2. Coleta as condições direcionais, independentemente da condição Random.
+                    rapidjson::Value directionalOrConditions(rapidjson::kArrayType);
+                    if (config.pFront)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 1, allocator);
+                    if (config.pFrontRight)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 2, allocator);
+                    if (config.pRight)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 3, allocator);
+                    if (config.pBackRight)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 4, allocator);
+                    if (config.pBack)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 5, allocator);
+                    if (config.pBackLeft)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 6, allocator);
+                    if (config.pLeft)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 7, allocator);
+                    if (config.pFrontLeft)
+                        AddCompareValuesCondition(directionalOrConditions, "DirecionalCycleMoveset", 8, allocator);
+
+                    // 3. Se houver alguma condição direcional, cria o bloco OR e o adiciona
+                    //    também ao bloco AND principal.
+                    if (!directionalOrConditions.Empty()) {
+                        rapidjson::Value orBlock(rapidjson::kObjectType);
+                        orBlock.AddMember("condition", "OR", allocator);
+                        orBlock.AddMember("Conditions", directionalOrConditions, allocator);
+                        andConditions.PushBack(orBlock, allocator);
+                    }
+                }
+
+                categoryAndBlock.AddMember("Conditions", andConditions, allocator);
+                innerConditions.PushBack(categoryAndBlock, allocator);
+            }
+
+            if (!innerConditions.Empty()) {
+                masterOrBlock.AddMember("Conditions", innerConditions, allocator);
+                conditions.PushBack(masterOrBlock, allocator);
+            }
+        }
+    } 
+    // Se a lista de configs ESTIVER VAZIA, geramos uma condição "kill switch".
+    else {
+        rapidjson::Value masterOrBlock(rapidjson::kObjectType);
+        masterOrBlock.AddMember("condition", "OR", allocator);
+        masterOrBlock.AddMember("comment", "OAR_CYCLE_MANAGER_CONDITIONS", allocator);
+        rapidjson::Value innerConditions(rapidjson::kArrayType);
+
+        rapidjson::Value andBlock(rapidjson::kObjectType);
+        andBlock.AddMember("condition", "AND", allocator);
+        rapidjson::Value andConditions(rapidjson::kArrayType);
+
+        // Adiciona uma condição que sempre será falsa.
+        // Assumindo que a variável "CycleMovesetDisable" nunca será 1.0 no seu behavior graph.
+        AddCompareValuesCondition(andConditions, "CycleMovesetDisable", 1, allocator);
+
+        andBlock.AddMember("Conditions", andConditions, allocator);
+        innerConditions.PushBack(andBlock, allocator);
         masterOrBlock.AddMember("Conditions", innerConditions, allocator);
         conditions.PushBack(masterOrBlock, allocator);
     }
@@ -891,3 +912,232 @@ void AnimationManager::AddRandomCondition(rapidjson::Value& conditionsArray, int
 
 // Toda a parte de user ta ca pra baixo
 
+std::optional<size_t> AnimationManager::FindModIndexByName(const std::string& name) {
+    for (size_t i = 0; i < _allMods.size(); ++i) {
+        if (_allMods[i].name == name) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<size_t> AnimationManager::FindSubAnimIndexByName(size_t modIdx, const std::string& name) {
+    if (modIdx >= _allMods.size()) return std::nullopt;
+    const auto& modDef = _allMods[modIdx];
+    for (size_t i = 0; i < modDef.subAnimations.size(); ++i) {
+        if (modDef.subAnimations[i].name == name) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+// --- NOVA FUNÇÃO DE CARREGAMENTO ---
+void AnimationManager::LoadStanceConfigurations() {
+    SKSE::log::info("Iniciando carregamento das configurações de Stance...");
+    const std::filesystem::path stancesRoot = "Data/SKSE/Plugins/CycleMovesets/Stances";
+
+    if (!std::filesystem::exists(stancesRoot)) {
+        SKSE::log::info("Diretório de Stances não encontrado. Nenhuma configuração carregada.");
+        return;
+    }
+
+    // Limpa as instâncias atuais antes de carregar
+    for (auto& pair : _categories) {
+        for (auto& instance : pair.second.instances) {
+            instance.modInstances.clear();
+        }
+    }
+
+    for (auto& categoryPair : _categories) {
+        WeaponCategory& category = categoryPair.second;
+        std::filesystem::path categoryPath = stancesRoot / category.name;
+
+        if (!std::filesystem::exists(categoryPath)) continue;
+
+        for (int i = 0; i < 4; ++i) {
+            std::filesystem::path instancePath = categoryPath / ("Instance" + std::to_string(i + 1) + "_Cycle.json");
+            if (!std::filesystem::exists(instancePath)) continue;
+
+            FILE* fp;
+            fopen_s(&fp, instancePath.string().c_str(), "rb");
+            if (!fp) continue;
+
+            char readBuffer[65536];
+            rapidjson::FileReadStream is(fp, readBuffer, sizeof(readBuffer));
+            rapidjson::Document doc;
+            doc.ParseStream(is);
+            fclose(fp);
+
+            if (doc.HasParseError() || !doc.IsObject() || !doc.HasMember("stances") || !doc["stances"].IsArray()) {
+                SKSE::log::warn("Arquivo de stance mal formatado: {}", instancePath.string());
+                continue;
+            }
+
+            CategoryInstance& targetInstance = category.instances[i];
+            const auto& stances = doc["stances"].GetArray();
+
+            for (const auto& stanceJson : stances) {
+                if (!stanceJson.IsObject()) continue;
+
+                ModInstance newModInstance;
+                std::string movesetName = stanceJson["name"].GetString();
+
+                auto modIdxOpt = FindModIndexByName(movesetName);
+                if (!modIdxOpt) {
+                    SKSE::log::warn("Moveset '{}' não encontrado na biblioteca ao carregar stance.", movesetName);
+                    continue;
+                }
+                newModInstance.sourceModIndex = *modIdxOpt;
+
+                if (stanceJson.HasMember("animations") && stanceJson["animations"].IsArray()) {
+                    for (const auto& animJson : stanceJson["animations"].GetArray()) {
+                        SubAnimationInstance newSubInstance;
+                        newSubInstance.sourceModName = animJson["sourceModName"].GetString();
+                        newSubInstance.sourceSubName = animJson["sourceSubName"].GetString();
+
+                        // Preenche os índices para uso em tempo de execução
+                        auto subModIdxOpt = FindModIndexByName(newSubInstance.sourceModName);
+                        if (subModIdxOpt) {
+                            newSubInstance.sourceModIndex = *subModIdxOpt;
+                            auto subAnimIdxOpt = FindSubAnimIndexByName(*subModIdxOpt, newSubInstance.sourceSubName);
+                            if (subAnimIdxOpt) {
+                                newSubInstance.sourceSubAnimIndex = *subAnimIdxOpt;
+                            } else {
+                                SKSE::log::warn("Sub-animação '{}' não encontrada em '{}'",
+                                                newSubInstance.sourceSubName, newSubInstance.sourceModName);
+                                continue;
+                            }
+                        } else {
+                            SKSE::log::warn("Mod de origem '{}' não encontrado para sub-animação.",
+                                            newSubInstance.sourceModName);
+                            continue;
+                        }
+
+                        // Carrega os estados dos checkboxes
+                        if (animJson.HasMember("pFront")) newSubInstance.pFront = animJson["pFront"].GetBool();
+                        if (animJson.HasMember("pBack")) newSubInstance.pBack = animJson["pBack"].GetBool();
+                        if (animJson.HasMember("pLeft")) newSubInstance.pLeft = animJson["pLeft"].GetBool();
+                        if (animJson.HasMember("pRight")) newSubInstance.pRight = animJson["pRight"].GetBool();
+                        if (animJson.HasMember("pFrontRight"))
+                            newSubInstance.pFrontRight = animJson["pFrontRight"].GetBool();
+                        if (animJson.HasMember("pFrontLeft"))
+                            newSubInstance.pFrontLeft = animJson["pFrontLeft"].GetBool();
+                        if (animJson.HasMember("pBackRight"))
+                            newSubInstance.pBackRight = animJson["pBackRight"].GetBool();
+                        if (animJson.HasMember("pBackLeft")) newSubInstance.pBackLeft = animJson["pBackLeft"].GetBool();
+                        if (animJson.HasMember("pRandom")) newSubInstance.pRandom = animJson["pRandom"].GetBool();
+                        if (animJson.HasMember("pDodge")) newSubInstance.pDodge = animJson["pDodge"].GetBool();
+
+                        newModInstance.subAnimationInstances.push_back(newSubInstance);
+                    }
+                }
+                targetInstance.modInstances.push_back(newModInstance);
+            }
+        }
+    }
+    SKSE::log::info("Carregamento das configurações de Stance concluído.");
+}
+
+// --- NOVA FUNÇÃO DE SALVAMENTO ---
+void AnimationManager::SaveStanceConfigurations() {
+    SKSE::log::info("Iniciando salvamento das configurações de Stance...");
+    const std::filesystem::path stancesRoot = "Data/SKSE/Plugins/CycleMovesets/Stances";
+
+    for (const auto& categoryPair : _categories) {
+        const WeaponCategory& category = categoryPair.second;
+        std::filesystem::path categoryPath = stancesRoot / category.name;
+        std::filesystem::create_directories(categoryPath);  // Garante que a pasta da categoria exista
+
+        for (int i = 0; i < 4; ++i) {
+            const CategoryInstance& instance = category.instances[i];
+            std::filesystem::path instancePath = categoryPath / ("Instance" + std::to_string(i + 1) + "_Cycle.json");
+
+            rapidjson::Document doc;
+            doc.SetObject();
+            auto& allocator = doc.GetAllocator();
+
+            doc.AddMember("Category", rapidjson::Value(category.name.c_str(), allocator), allocator);
+
+            rapidjson::Value stancesArray(rapidjson::kArrayType);
+
+            for (const auto& modInst : instance.modInstances) {
+                if (!modInst.isSelected) continue;  // Pula movesets desativados
+
+                const auto& sourceMod = _allMods[modInst.sourceModIndex];
+
+                rapidjson::Value stanceObj(rapidjson::kObjectType);
+                rapidjson::Value typeValue(sourceMod.author == "Usuário" ? "user_moveset" : "moveset", allocator);
+                stanceObj.AddMember("type", typeValue, allocator);
+                stanceObj.AddMember("name", rapidjson::Value(sourceMod.name.c_str(), allocator), allocator);
+
+                rapidjson::Value animationsArray(rapidjson::kArrayType);
+                for (const auto& subInst : modInst.subAnimationInstances) {
+                    if (!subInst.isSelected) continue;
+
+                    const auto& animOriginMod = _allMods[subInst.sourceModIndex];
+                    const auto& animOriginSub = animOriginMod.subAnimations[subInst.sourceSubAnimIndex];
+
+                    rapidjson::Value animObj(rapidjson::kObjectType);
+                    animObj.AddMember("sourceModName", rapidjson::Value(animOriginMod.name.c_str(), allocator),
+                                      allocator);
+                    animObj.AddMember("sourceSubName", rapidjson::Value(animOriginSub.name.c_str(), allocator),
+                                      allocator);
+                    animObj.AddMember("sourceConfigPath",
+                                      rapidjson::Value(animOriginSub.path.string().c_str(), allocator), allocator);
+
+                    // Salva todos os booleans
+                    animObj.AddMember("pFront", subInst.pFront, allocator);
+                    animObj.AddMember("pBack", subInst.pBack, allocator);
+                    animObj.AddMember("pLeft", subInst.pLeft, allocator);
+                    animObj.AddMember("pRight", subInst.pRight, allocator);
+                    animObj.AddMember("pFrontRight", subInst.pFrontRight, allocator);
+                    animObj.AddMember("pFrontLeft", subInst.pFrontLeft, allocator);
+                    animObj.AddMember("pBackRight", subInst.pBackRight, allocator);
+                    animObj.AddMember("pBackLeft", subInst.pBackLeft, allocator);
+                    animObj.AddMember("pRandom", subInst.pRandom, allocator);
+                    animObj.AddMember("pDodge", subInst.pDodge, allocator);
+
+                    animationsArray.PushBack(animObj, allocator);
+                }
+                stanceObj.AddMember("animations", animationsArray, allocator);
+                stancesArray.PushBack(stanceObj, allocator);
+            }
+
+            doc.AddMember("stances", stancesArray, allocator);
+
+            // Escreve o arquivo JSON
+            FILE* fp;
+            fopen_s(&fp, instancePath.string().c_str(), "wb");
+            if (fp) {
+                char writeBuffer[65536];
+                rapidjson::FileWriteStream os(fp, writeBuffer, sizeof(writeBuffer));
+                rapidjson::PrettyWriter<rapidjson::FileWriteStream> writer(os);
+                doc.Accept(writer);
+                fclose(fp);
+            }
+        }
+    }
+    SKSE::log::info("Salvamento das configurações de Stance concluído.");
+}
+
+void AnimationManager::AddNegatedCompareValuesCondition(rapidjson::Value& conditionsArray,
+                                                        const std::string& graphVarName, int value,
+                                                        rapidjson::Document::AllocatorType& allocator) {
+    rapidjson::Value newCompare(rapidjson::kObjectType);
+    newCompare.AddMember("condition", "CompareValues", allocator);
+
+    // ---> A ÚNICA DIFERENÇA ESTÁ AQUI <---
+    newCompare.AddMember("negated", true, allocator);
+
+    newCompare.AddMember("requiredVersion", "1.0.0.0", allocator);
+    rapidjson::Value valueA(rapidjson::kObjectType);
+    valueA.AddMember("value", static_cast<double>(value), allocator);
+    newCompare.AddMember("Value A", valueA, allocator);
+    newCompare.AddMember("Comparison", "==", allocator);
+    rapidjson::Value valueB(rapidjson::kObjectType);
+    valueB.AddMember("graphVariable", rapidjson::Value(graphVarName.c_str(), allocator), allocator);
+    valueB.AddMember("graphVariableType", "Float", allocator);
+    newCompare.AddMember("Value B", valueB, allocator);
+    conditionsArray.PushBack(newCompare, allocator);
+}

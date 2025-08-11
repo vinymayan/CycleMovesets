@@ -17,6 +17,9 @@ struct AnimationModDef {
 
 // --- Estruturas de Configuração do Usuário ---
 struct SubAnimationInstance {
+    // --- ALTERADO: Usamos nomes para salvar/carregar. Os índices serão preenchidos em tempo de execução. ---
+    std::string sourceModName;  // Nome do mod de origem (e.g., "BFCO")
+    std::string sourceSubName;  // Nome da sub-animação de origem (e.g., "700036")
     size_t sourceModIndex;
     size_t sourceSubAnimIndex;
     bool isSelected = true;
@@ -48,4 +51,9 @@ struct WeaponCategory {
     int activeInstanceIndex = 0;
     bool isDualWield = false;
     std::array<CategoryInstance, 4> instances;
+};
+
+struct UserMoveset {
+    std::string name;
+    std::vector<SubAnimationInstance> subAnimations;
 };

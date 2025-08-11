@@ -17,7 +17,8 @@ RE::BSEventNotifyControl InputListener::ProcessEvent(RE::InputEvent* const* a_ev
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    // Primeiro, atualizamos o estado de todas as teclas pressionadas neste frame
+    bool umaTeclaDeMovimentoMudou = false;
+
     for (auto* event = *a_event; event; event = event->next) {
         if (event->GetEventType() != RE::INPUT_EVENT_TYPE::kButton) {
             continue;
@@ -28,34 +29,50 @@ RE::BSEventNotifyControl InputListener::ProcessEvent(RE::InputEvent* const* a_ev
         }
 
         const uint32_t scanCode = button->GetIDCode();
-        const bool isDown = button->IsDown();
-        const bool isUp = button->IsUp();
 
+        // Lógica rigorosa de máquina de estados para cada tecla
         if (scanCode == W_KEY) {
-            if (isDown)
+            // Só mude para 'pressionado' se a tecla ESTIVER 'down' E nosso estado atual for 'solto'.
+            if (button->IsDown() && !w_pressed) {
                 w_pressed = true;
-            else if (isUp)
+                umaTeclaDeMovimentoMudou = true;
+            }
+            // Só mude para 'solto' se a tecla ESTIVER 'up' E nosso estado atual for 'pressionado'.
+            else if (button->IsUp() && w_pressed) {
                 w_pressed = false;
+                umaTeclaDeMovimentoMudou = true;
+            }
         } else if (scanCode == A_KEY) {
-            if (isDown)
+            if (button->IsDown() && !a_pressed) {
                 a_pressed = true;
-            else if (isUp)
+                umaTeclaDeMovimentoMudou = true;
+            } else if (button->IsUp() && a_pressed) {
                 a_pressed = false;
+                umaTeclaDeMovimentoMudou = true;
+            }
         } else if (scanCode == S_KEY) {
-            if (isDown)
+            if (button->IsDown() && !s_pressed) {
                 s_pressed = true;
-            else if (isUp)
+                umaTeclaDeMovimentoMudou = true;
+            } else if (button->IsUp() && s_pressed) {
                 s_pressed = false;
+                umaTeclaDeMovimentoMudou = true;
+            }
         } else if (scanCode == D_KEY) {
-            if (isDown)
+            if (button->IsDown() && !d_pressed) {
                 d_pressed = true;
-            else if (isUp)
+                umaTeclaDeMovimentoMudou = true;
+            } else if (button->IsUp() && d_pressed) {
                 d_pressed = false;
+                umaTeclaDeMovimentoMudou = true;
+            }
         }
     }
 
-    // Após processar todos os eventos do frame, calculamos o estado direcional final
-    UpdateDirectionalState();
+    // Apenas recalcule a direção se uma das nossas teclas de movimento REALMENTE mudou de estado.
+    if (umaTeclaDeMovimentoMudou) {
+        UpdateDirectionalState();
+    }
 
     return RE::BSEventNotifyControl::kContinue;
 }
