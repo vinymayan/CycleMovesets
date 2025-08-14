@@ -4,6 +4,7 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 #include "SkyPrompt/API.hpp"
+#include "Hooks.h"
 
 namespace GlobalControl {
     // --- CONFIGURAÇÃO ---
@@ -20,9 +21,12 @@ namespace GlobalControl {
 
     // --- DEFINIÇÃO DAS TECLAS E PROMPTS ---
     // Nota: Os números são DirectX Scan Codes. U=21, I=23, O=24.
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_1 = {RE::INPUT_DEVICE::kKeyboard, 2};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_2 = {RE::INPUT_DEVICE::kKeyboard, 3};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_3 = {RE::INPUT_DEVICE::kKeyboard, 4};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_1 = {RE::INPUT_DEVICE::kKeyboard,
+                                                                          Settings::hotkey_terceira};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_2 = {RE::INPUT_DEVICE::kKeyboard,
+                                                                          Settings::hotkey_segunda};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_3 = {RE::INPUT_DEVICE::kKeyboard,
+                                                                          Settings::hotkey_principal};
     const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_4 = {RE::INPUT_DEVICE::kKeyboard, 5};
     const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_U = {RE::INPUT_DEVICE::kKeyboard, 22};
     const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_I = {RE::INPUT_DEVICE::kKeyboard, 23};
@@ -45,17 +49,31 @@ namespace GlobalControl {
     const SkyPromptAPI::Prompt stance_5("Stance", 5, 1, SkyPromptAPI::PromptType::kSinglePress, 0,
                                         std::span(&insta_4, 1));
     // ActionID 0: Incrementar
-    const SkyPromptAPI::Prompt prompt_Increment("Next", 4, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
+    inline SkyPromptAPI::Prompt prompt_Increment("Next", 4, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
                                                 std::span(&insta_3, 1));
     // ActionID 1: Resetar
-    const SkyPromptAPI::Prompt prompt_Reset("Reset", 3, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
+    inline SkyPromptAPI::Prompt prompt_Reset("Reset", 3, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
                                             std::span(&insta_2, 1));
     // ActionID 2: Decrementar
-    const SkyPromptAPI::Prompt prompt_Decrement("Back", 2, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
+    inline SkyPromptAPI::Prompt prompt_Decrement("Back", 2, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
                                                 std::span(&insta_1, 1));
     const SkyPromptAPI::Prompt menu_stance("Stance menu", 5, 0, SkyPromptAPI::PromptType::kHoldAndKeep, 0,std::span(&stancemenu, 1));
     const SkyPromptAPI::Prompt menu_moveset("Moveset menu", 6, 0, SkyPromptAPI::PromptType::kHoldAndKeep, 0,
                                            std::span(&stancemenu, 1));
+
+    
+    // A definimos como 'inline' aqui mesmo para simplificar e evitar problemas de linker.
+    inline void UpdateRegisteredHotkeys() {
+        SKSE::log::info("Atualizando hotkeys registradas na SkyPromptAPI...");
+
+        // Atribui o novo valor do scan code (a segunda parte do 'pair')
+        insta_1.second = Settings::hotkey_terceira;
+        insta_2.second = Settings::hotkey_segunda;
+        insta_3.second = Settings::hotkey_principal;
+
+ 
+    }
+
 
     // A classe Sink processa os eventos da API
     class Sink final : public SkyPromptAPI::PromptSink, public clib_util::singleton::ISingleton<Sink> {
