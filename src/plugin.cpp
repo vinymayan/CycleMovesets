@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 
 namespace GlobalControl {
     // Implementação da função GetPrompts() da classe Sink
-    std::span<const SkyPromptAPI::Prompt> Sink::GetPrompts() const { return m_prompts; }
+    std::span<const SkyPromptAPI::Prompt> Sink::GetPrompts() const { return m_moveset; }
 
     // Implementação da função ProcessEvent() da classe Sink
     void Sink::ProcessEvent(SkyPromptAPI::PromptEvent event) const {
@@ -24,52 +24,67 @@ namespace GlobalControl {
         }
         static float cycleplayer = 0.0f;
         // Usamos o ActionID que definimos nos prompts para decidir o que fazer
+        //switch (event.prompt.eventID) {
+        //    case 2:  // Incrementar (Tecla 1)
+        //        SKSE::log::info("Apertou tecla 1");
+        //        RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("cycle_instance", 1.0f);
+        //        // RE::DebugNotification(std::format("Apertou tecla 1").c_str());
+        //        break;
+
+        //    case 3:  // Incrementar (Tecla 2)
+        //        SKSE::log::info("Apertou tecla 2");
+        //        RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("cycle_instance", 2.0f);
+        //        // RE::DebugNotification(std::format("Apertou tecla 2").c_str());
+        //        break;
+
+        //    case 4:  // Incrementar (Tecla 3)
+        //        SKSE::log::info("Apertou tecla 3");
+        //        RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("cycle_instance", 3.0f);
+        //        // RE::DebugNotification(std::format("Apertou tecla 3").c_str());
+        //        break;
+
+        //    case 5:  // Incrementar (Tecla 4)
+        //        SKSE::log::info("Apertou tecla 4");
+        //        RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("cycle_instance", 4.0f);
+        //        // RE::DebugNotification(std::format("Apertou tecla 4").c_str());
+        //        break;
+
+        //    case 6:  // Incrementar (Tecla U)
+        //        SkyPromptAPI::RemovePrompt(Sink::GetSingleton(), g_clientID);
+        //        SKSE::log::info("Variavel Global incrementada para: {}", cycleplayer);
+        //        RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+        //        RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+        //        break;
+
+        //}
+
         switch (event.prompt.eventID) {
-            case 0:  // Incrementar (Tecla 1)
-                SKSE::log::info("Apertou tecla 1");
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                RE::DebugNotification(std::format("Apertou tecla 1").c_str());
-                break;
 
-            case 1:  // Incrementar (Tecla 2)
-                SKSE::log::info("Apertou tecla 2");
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                RE::DebugNotification(std::format("Apertou tecla 2").c_str());
-                break;
 
-            case 2:  // Incrementar (Tecla 3)
-                SKSE::log::info("Apertou tecla 3");
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                RE::DebugNotification(std::format("Apertou tecla 3").c_str());
-                break;
+           case 5:  // stance menu
+            RE::DebugNotification(std::format("stances are in working").c_str());
+              break;
+          case 4:  // Incrementar (Tecla U)
+             cycleplayer += 1.0f;
+              SKSE::log::info("Variavel Global incrementada para: {}", cycleplayer);
+           RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+            RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+            break;
 
-            case 3:  // Incrementar (Tecla 4)
-                SKSE::log::info("Apertou tecla 4");
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                RE::DebugNotification(std::format("Apertou tecla 4").c_str());
-                break;
-
-            case 4:  // Incrementar (Tecla U)
-                cycleplayer += 1.0f;
-                SKSE::log::info("Variavel Global incrementada para: {}", cycleplayer);
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
-                break;
-
-            case 5:  // Resetar (Tecla I)
-                cycleplayer = 0.0f;
+       case 3:  // Resetar (Tecla I)
+        cycleplayer = 0.0f;
                 SKSE::log::info("Variavel Global resetada para 0.");
-                RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                break;
+             RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+             RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+             break;
 
-            case 6:  // Decrementar (Tecla O)
-                cycleplayer -= 1.0f;
-                SKSE::log::info("Variavel Global decrementada para: {}", cycleplayer);
-                RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
-                RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+          case 2:  // Decrementar (Tecla O)
+               cycleplayer -= 1.0f;
+               SKSE::log::info("Variavel Global decrementada para: {}", cycleplayer);
+             RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+             RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
                 break;
-        }
+       }
 
         // Reenviamos os prompts para a API para que ela continue a escutar por futuras pressões.
         // Algumas APIs consomem o prompt após o uso, então esta é uma boa prática.

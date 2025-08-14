@@ -1,14 +1,15 @@
-﻿#include <format>
+﻿#include <algorithm>
+#include <format>
 #include <fstream>
 #include <string>
-#include <algorithm>
+
 #include "Events.h"
 #include "SKSEMCP/SKSEMenuFramework.hpp"
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/filereadstream.h"
 #include "rapidjson/filewritestream.h"
 #include "rapidjson/prettywriter.h"
-#include "rapidjson/filereadstream.h"
 
 AnimationManager& AnimationManager::GetSingleton() {
     static AnimationManager instance;
@@ -16,6 +17,35 @@ AnimationManager& AnimationManager::GetSingleton() {
 }
 
 
+// --- DESAFIO 1: Nova função para escanear a pasta do sub-moveset em busca de tags ---
+void ScanSubAnimationFolderForTags(const std::filesystem::path& subAnimPath,
+                                                     SubAnimationDef& subAnimDef) {
+    if (!std::filesystem::exists(subAnimPath) || !std::filesystem::is_directory(subAnimPath)) {
+        return;
+    }
+
+    subAnimDef.attackCount = 0;
+    subAnimDef.powerAttackCount = 0;
+    subAnimDef.hasIdle = false;
+
+    for (const auto& fileEntry : std::filesystem::directory_iterator(subAnimPath)) {
+        if (fileEntry.is_regular_file()) {
+            std::string filename = fileEntry.path().filename().string();
+            std::string lowerFilename = filename;
+            std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
+
+            if (filename.rfind("BFCO_Attack", 0) == 0) {  // Prefixo "BFCO_Attack"
+                subAnimDef.attackCount++;
+            }
+            if (filename.rfind("BFCO_PowerAttack", 0) == 0) {  // Prefixo "BFCO_PowerAttack"
+                subAnimDef.powerAttackCount++;
+            }
+            if (lowerFilename.find("idle") != std::string::npos) {  // Contém "idle"
+                subAnimDef.hasIdle = true;
+            }
+        }
+    }
+}
 
 // --- Lógica de Escaneamento (Carrega a Biblioteca) ---
 void AnimationManager::ScanAnimationMods() {
@@ -43,7 +73,9 @@ void AnimationManager::ScanAnimationMods() {
                                                            {"Dual Swords", 1.0, true},
                                                            {"Dual Daggers", 2.0, true},
                                                            {"Dual War Axes", 3.0, true},
-                                                           {"Dual Maces", 4.0, true}};
+                                                           {"Dual Maces", 4.0, true},
+                                                           {"Unarmed", 0.0, true}};
+
 
     for (const auto& def : categoryDefinitions) {
         _categories[def.name].name = def.name;
@@ -59,7 +91,6 @@ void AnimationManager::ScanAnimationMods() {
     }
     SKSE::log::info("Escaneamento de arquivos finalizado. {} mods carregados.", _allMods.size());
 
-    
     // Agora que temos todos os mods, vamos encontrar quais arquivos já gerenciamos.
     SKSE::log::info("Verificando arquivos previamente gerenciados...");
     _managedFiles.clear();
@@ -99,8 +130,8 @@ void AnimationManager::ScanAnimationMods() {
     }
     SKSE::log::info("Integração finalizada. Total de {} mods na biblioteca (incluindo de usuário).", _allMods.size());
     // -- -NOVA CHAMADA-- -
-        // Agora que a biblioteca de mods (_allMods) está completa, carregamos a configuração da UI.
-        LoadStanceConfigurations();
+    // Agora que a biblioteca de mods (_allMods) está completa, carregamos a configuração da UI.
+    LoadStanceConfigurations();
 }
 
 void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) {
@@ -121,53 +152,44 @@ void AnimationManager::ProcessTopLevelMod(const std::filesystem::path& modPath) 
                 SubAnimationDef subAnimDef;
                 subAnimDef.name = subEntry.path().filename().string();
                 subAnimDef.path = subEntry.path() / "config.json";
+                // --- DESAFIO 1: Chamar a função de escaneamento de tags ---
+                ScanSubAnimationFolderForTags(subEntry.path(), subAnimDef);
                 modDef.subAnimations.push_back(subAnimDef);
             }
         }
         _allMods.push_back(modDef);
-
     }
 }
-
-
-
-
 
 // --- Lógica da Interface de Usuário ---
 void AnimationManager::DrawAddModModal() {
     if (_isAddModModalOpen) {
         if (_instanceToAddTo) {
             ImGui::OpenPopup("Adicionar Moveset");
-        }
-        // CORREÇÃO: O modal de sub-moveset agora abre se QUALQUER um dos ponteiros for válido.
-        else if (_modInstanceToAddTo || _userMovesetToAddTo) {
+        } else if (_modInstanceToAddTo || _userMovesetToAddTo) {
             ImGui::OpenPopup("Adicionar Sub-Moveset");
         }
         _isAddModModalOpen = false;
     }
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 modal_list_size = ImVec2(viewport->Size.x * 0.5f, viewport->Size.y * 0.5f);
     ImVec2 center = ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.5f);
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    // Modal "Adicionar Moveset" (sem alterações, já estava correto)
     if (ImGui::BeginPopupModal("Adicionar Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Biblioteca de Movesets");
         ImGui::Separator();
-        // NOVO: Caixa de pesquisa para movesets
         ImGui::InputText("Filtrar", _movesetFilter, 128);
-        if (ImGui::BeginChild("BibliotecaMovesets", ImVec2(600, 400), true)) {
-            // Prepara o filtro para busca case-insensitive
+        if (ImGui::BeginChild("BibliotecaMovesets", ImVec2(modal_list_size), true)) {
             std::string filter_str = _movesetFilter;
             std::transform(filter_str.begin(), filter_str.end(), filter_str.begin(), ::tolower);
-
             for (size_t modIdx = 0; modIdx < _allMods.size(); ++modIdx) {
                 const auto& modDef = _allMods[modIdx];
-
                 std::string mod_name_str = modDef.name;
                 std::transform(mod_name_str.begin(), mod_name_str.end(), mod_name_str.begin(), ::tolower);
-
-                // Aplica o filtro
                 if (filter_str.empty() || mod_name_str.find(filter_str) != std::string::npos) {
-                    ImGui::Text("%s", modDef.name.c_str());
-                    ImGui::SameLine(ImGui::GetWindowWidth() - 100);
+                    
                     if (ImGui::Button(("Adicionar##" + modDef.name).c_str())) {
                         ModInstance newModInstance;
                         newModInstance.sourceModIndex = modIdx;
@@ -179,35 +201,36 @@ void AnimationManager::DrawAddModModal() {
                         }
                         _instanceToAddTo->modInstances.push_back(newModInstance);
                     }
+                    ImGui::SameLine(240);
+                    ImGui::Text("%s", modDef.name.c_str());
+                    
                 }
             }
         }
         ImGui::EndChild();
         if (ImGui::Button("Fechar")) {
-            strcpy_s(_movesetFilter, "");  // Limpa o filtro ao fechar
+            strcpy_s(_movesetFilter, "");
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
+
+    // Modal "Adicionar Sub-Moveset" (COM AS CORREÇÕES)
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     if (ImGui::BeginPopupModal("Adicionar Sub-Moveset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Biblioteca de Animações");
         ImGui::Separator();
-        // NOVO: Caixa de pesquisa para sub-movesets
         ImGui::InputText("Filtrar", _subMovesetFilter, 128);
 
-        if (ImGui::BeginChild("BibliotecaSubMovesets", ImVec2(600, 400), true)) {
+        if (ImGui::BeginChild("BibliotecaSubMovesets", ImVec2(modal_list_size), true)) {
             std::string filter_str = _subMovesetFilter;
             std::transform(filter_str.begin(), filter_str.end(), filter_str.begin(), ::tolower);
 
             for (size_t modIdx = 0; modIdx < _allMods.size(); ++modIdx) {
                 const auto& modDef = _allMods[modIdx];
-
                 std::string mod_name_str = modDef.name;
                 std::transform(mod_name_str.begin(), mod_name_str.end(), mod_name_str.begin(), ::tolower);
                 bool parent_matches = mod_name_str.find(filter_str) != std::string::npos;
-
-                // Verifica se algum filho corresponde ao filtro
                 bool child_matches = false;
                 if (!parent_matches) {
                     for (const auto& subAnim : modDef.subAnimations) {
@@ -220,21 +243,27 @@ void AnimationManager::DrawAddModModal() {
                     }
                 }
 
-                // Mostra o TreeNode se o filtro estiver vazio, ou se o pai ou algum filho corresponder
                 if (filter_str.empty() || parent_matches || child_matches) {
                     if (ImGui::TreeNode(modDef.name.c_str())) {
                         for (size_t subAnimIdx = 0; subAnimIdx < modDef.subAnimations.size(); ++subAnimIdx) {
                             const auto& subAnimDef = modDef.subAnimations[subAnimIdx];
-
                             std::string sub_name_str = subAnimDef.name;
                             std::transform(sub_name_str.begin(), sub_name_str.end(), sub_name_str.begin(), ::tolower);
 
-                            // Mostra o filho se o filtro estiver vazio ou se ele corresponder
                             if (filter_str.empty() || sub_name_str.find(filter_str) != std::string::npos) {
-                                ImGui::Text("%s", subAnimDef.name.c_str());
-                                ImGui::SameLine();
-                                ImGui::PushID(static_cast<int>(modIdx * 1000 + subAnimIdx));
-                                if (ImGui::Button("Adicionar")) {
+                                ImGui::PushID(static_cast<int>(
+                                    modIdx * 1000 +
+                                    subAnimIdx));  // <-- CORREÇÃO: PushID antes de qualquer item da linha.
+
+                                
+
+                                // <-- CORREÇÃO 1: Alinha o botão à direita com um espaçamento.
+                                float button_width = 100.0f;
+
+                                ImVec2 content_avail;
+                                ImGui::GetContentRegionAvail(&content_avail);  // Pega a região disponível
+
+                                if (ImGui::Button("Adicionar", ImVec2(button_width, 0))) {
                                     SubAnimationInstance newSubInstance;
                                     newSubInstance.sourceModIndex = modIdx;
                                     newSubInstance.sourceSubAnimIndex = subAnimIdx;
@@ -242,24 +271,35 @@ void AnimationManager::DrawAddModModal() {
                                     const auto& sourceSubAnim = sourceMod.subAnimations[subAnimIdx];
                                     newSubInstance.sourceModName = sourceMod.name;
                                     newSubInstance.sourceSubName = sourceSubAnim.name;
-                                    if (_modInstanceToAddTo) {  // Se estamos adicionando a um ModInstance (sistema
-                                                                // antigo)
+                                    if (_modInstanceToAddTo) {
                                         _modInstanceToAddTo->subAnimationInstances.push_back(newSubInstance);
-                                    } else if (_userMovesetToAddTo) {  // Se estamos adicionando a um UserMoveset
-                                                                       // (sistema novo)
+                                    } else if (_userMovesetToAddTo) {
                                         _userMovesetToAddTo->subAnimations.push_back(newSubInstance);
                                     }
                                 }
+                                // Se a largura disponível for maior que o botão, alinha
+                                if (content_avail.x > button_width) {
+                                    ImGui::SameLine(button_width +40);
+                                } else {
+                                    ImGui::SameLine();  // Fallback para evitar posições negativas
+                                }
+
+                                
+                                ImGui::Text("%s", subAnimDef.name.c_str());
+                                ImGui::PopID();  // <-- CORREÇÃO 2: PopID movido para DENTRO do loop, no final da
+                                                 // iteração.
                             }
                         }
-                        ImGui::PopID();
+                        ImGui::TreePop();
                     }
-                    ImGui::TreePop();
                 }
             }
         }
         ImGui::EndChild();
-        if (ImGui::Button("Fechar")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Fechar")) {
+            strcpy_s(_subMovesetFilter, "");  // Limpa o filtro ao fechar
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }
@@ -306,7 +346,6 @@ void AnimationManager::DrawAnimationManager() {
         ImGui::PushID(category.name.c_str());
         // CORREÇÃO: Usando a lógica simples que sempre funciona, sem acordeão por enquanto.
         if (ImGui::CollapsingHeader(category.name.c_str())) {
-            
             if (ImGui::BeginTabBar("StanceTabs")) {
                 for (int i = 0; i < 4; ++i) {
                     if (ImGui::BeginTabItem(std::format("Stance {}", i + 1).c_str())) {
@@ -349,8 +388,8 @@ void AnimationManager::DrawAnimationManager() {
                         ImGui::Separator();
 
                         int modInstanceToRemove = -1;
-                        //int playlistEntryCounter = 1;  // Contador apenas para "Pais"
-                        // Loop para os Movesets (ModInstance)
+                        // int playlistEntryCounter = 1;  // Contador apenas para "Pais"
+                        //  Loop para os Movesets (ModInstance)
                         for (size_t mod_i = 0; mod_i < instance.modInstances.size(); ++mod_i) {
                             auto& modInstance = instance.modInstances[mod_i];
                             const auto& sourceMod = _allMods[modInstance.sourceModIndex];
@@ -373,8 +412,6 @@ void AnimationManager::DrawAnimationManager() {
                             ImGui::SameLine();
                             bool node_open = ImGui::TreeNode(sourceMod.name.c_str());
 
-                           
-
                             // Drag and Drop para MOVESETS
                             if (ImGui::BeginDragDropSource()) {
                                 ImGui::SetDragDropPayload("DND_MOD_INSTANCE", &mod_i, sizeof(size_t));
@@ -396,9 +433,9 @@ void AnimationManager::DrawAnimationManager() {
                                 }
                                 // Estas variáveis agora controlam a lógica de agrupamento
 
-                                //int lastParentNumber = 0;   // Armazena o número do último "Pai"
-                                // NOVO: Variável para marcar um sub-moveset para remoção
-                                //int subInstanceToRemove = -1;
+                                // int lastParentNumber = 0;   // Armazena o número do último "Pai"
+                                //  NOVO: Variável para marcar um sub-moveset para remoção
+                                // int subInstanceToRemove = -1;
 
                                 // Loop para os Sub-Movesets (SubAnimationInstance)
                                 for (size_t sub_j = 0; sub_j < modInstance.subAnimationInstances.size(); ++sub_j) {
@@ -417,7 +454,6 @@ void AnimationManager::DrawAnimationManager() {
 
                                     ImGui::Checkbox("##subselect", &subInstance.isSelected);
                                     ImGui::SameLine();
-
 
                                     std::string label;
 
@@ -443,8 +479,23 @@ void AnimationManager::DrawAnimationManager() {
 
                                     ImVec2 regionAvail;
                                     ImGui::GetContentRegionAvail(&regionAvail);
-                                    ImGui::Selectable(label.c_str(), false, 0,
-                                                      ImVec2(regionAvail.x - 800, 0));
+                                    ImGui::Selectable(label.c_str(), false, 0, ImVec2(regionAvail.x - regionAvail.x/2));
+                                    // --- INÍCIO DA EXIBIÇÃO DAS TAGS ---
+                                    if (originSubAnim.attackCount > 0) {
+                                        ImGui::SameLine();
+                                        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "[Attack: %d]",
+                                                           originSubAnim.attackCount);
+                                    }
+                                    if (originSubAnim.powerAttackCount > 0) {
+                                        ImGui::SameLine();
+                                        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "[PowerAttack: %d]",
+                                                           originSubAnim.powerAttackCount);
+                                    }
+                                    if (originSubAnim.hasIdle) {
+                                        ImGui::SameLine();
+                                        ImGui::TextColored(ImVec4(0.4f, 0.6f, 1.0f, 1.0f), "[Idle]");
+                                    }
+                                    // --- FIM DA EXIBIÇÃO DAS TAGS ---
 
 
                                     // Drag and Drop para SUB-MOVESETS
@@ -480,8 +531,8 @@ void AnimationManager::DrawAnimationManager() {
                                     ImGui::Checkbox("BL", &subInstance.pBackLeft);
                                     ImGui::SameLine();
                                     ImGui::Checkbox("Rnd", &subInstance.pRandom);
-                                    ImGui::SameLine();                          
-                                    ImGui::Checkbox("Dodge", &subInstance.pDodge);  
+                                    ImGui::SameLine();
+                                    ImGui::Checkbox("Dodge", &subInstance.pDodge);
 
                                     if (isChildDisabled) {
                                         ImGui::PopStyleColor();
@@ -491,8 +542,7 @@ void AnimationManager::DrawAnimationManager() {
                                 }
 
                                 ImGui::TreePop();
-
-                            }  
+                            }
                             if (isParentDisabled) {
                                 ImGui::PopStyleColor();
                             }
@@ -510,10 +560,8 @@ void AnimationManager::DrawAnimationManager() {
             }
         }
         ImGui::PopID();
-        
     }
 }
-
 
 void AnimationManager::SaveAllSettings() {
     SKSE::log::info("Iniciando salvamento global de todas as configurações...");
@@ -533,8 +581,6 @@ void AnimationManager::SaveAllSettings() {
             // 3. Loop através dos MOVESETS (ModInstance) na instância
             for (size_t mod_i = 0; mod_i < instance.modInstances.size(); ++mod_i) {
                 ModInstance& modInstance = instance.modInstances[mod_i];
-
-                
 
                 // 4. Loop através dos SUB-MOVESETS (SubAnimationInstance)
                 for (size_t sub_j = 0; sub_j < modInstance.subAnimationInstances.size(); ++sub_j) {
@@ -559,7 +605,6 @@ void AnimationManager::SaveAllSettings() {
                         config.pBackRight = subInstance.pBackRight;
                         config.pBackLeft = subInstance.pBackLeft;
                         config.pRandom = subInstance.pRandom;
-
 
                         // Determina se é um "Pai" (nenhuma checkbox de direção marcada) ou "Filho"
                         bool isParent = !(config.pFront || config.pBack || config.pLeft || config.pRight ||
@@ -606,8 +651,6 @@ void AnimationManager::SaveAllSettings() {
     RE::DebugNotification("Todas as configurações foram salvas!");
 }
 
-
-
 void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
                                           const std::vector<FileSaveConfig>& configs) {
     rapidjson::Document doc;
@@ -629,7 +672,7 @@ void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
     // ---> INÍCIO DA NOVA LÓGICA DE PRIORIDADE <---
 
     // 1. Lê a prioridade base do arquivo. Se não existir, usa um valor padrão (ex: 0).
-    int basePriority = 20000000;
+    int basePriority = 200000000;
     if (doc.HasMember("priority") && doc["priority"].IsInt()) {
         basePriority;  //= doc["priority"].GetInt();
     }
@@ -701,9 +744,7 @@ void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
         }
     }
 
-
     if (!configs.empty()) {
-        
         rapidjson::Value masterOrBlock(rapidjson::kObjectType);
         masterOrBlock.AddMember("condition", "OR", allocator);
         masterOrBlock.AddMember("comment", "OAR_CYCLE_MANAGER_CONDITIONS", allocator);
@@ -799,13 +840,12 @@ void AnimationManager::UpdateOrCreateJson(const std::filesystem::path& jsonPath,
                 categoryAndBlock.AddMember("Conditions", andConditions, allocator);
                 innerConditions.PushBack(categoryAndBlock, allocator);
             }
-
-            if (!innerConditions.Empty()) {
-                masterOrBlock.AddMember("Conditions", innerConditions, allocator);
-                conditions.PushBack(masterOrBlock, allocator);
-            }
         }
-    } 
+        if (!innerConditions.Empty()) {
+            masterOrBlock.AddMember("Conditions", innerConditions, allocator);
+            conditions.PushBack(masterOrBlock, allocator);
+        }
+    }
     // Se a lista de configs ESTIVER VAZIA, geramos uma condição "kill switch".
     else {
         rapidjson::Value masterOrBlock(rapidjson::kObjectType);
@@ -907,8 +947,6 @@ void AnimationManager::AddRandomCondition(rapidjson::Value& conditionsArray, int
 
     conditionsArray.PushBack(newRandom, allocator);
 }
-
-
 
 // Toda a parte de user ta ca pra baixo
 

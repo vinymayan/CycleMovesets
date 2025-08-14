@@ -8,6 +8,9 @@
 struct SubAnimationDef {
     std::string name;
     std::filesystem::path path;
+    int attackCount = 0;       // Contagem de arquivos BFCO_Attack
+    int powerAttackCount = 0;  // Contagem de arquivos BFCO_PowerAttack
+    bool hasIdle = false;      // Presença de arquivos "idle"
 };
 struct AnimationModDef {
     std::string name;
