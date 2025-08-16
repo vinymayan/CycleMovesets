@@ -232,24 +232,24 @@ void GlobalControl::MovesetChangesSink::ProcessEvent(SkyPromptAPI::PromptEvent e
 RE::BSEventNotifyControl GlobalControl::CameraChange::ProcessEvent(const SKSE::CameraEvent* a_event,
                                                           RE::BSTEventSource<SKSE::CameraEvent>*) {
     // Verificação de segurança para garantir que o evento não é nulo.
-    auto playerCamera = GlobalControl::IsThirdPerson;
+    auto playerCam = RE::PlayerCamera::GetSingleton();
+    playerCam->IsInFirstPerson();
     auto menuOpen = IsAnyMenuOpen;
     auto weaponDraw = GlobalControl::IsWeaponDrawn;
     
     if (!a_event) {
         return RE::BSEventNotifyControl::kContinue;
     }
-
-    if (!weaponDraw || !playerCamera || menuOpen) {
-        // Remove os prompts da tela.
+    if (!RE::PlayerCamera::GetSingleton()->IsInThirdPerson()) {
         SkyPromptAPI::RemovePrompt(StancesSink::GetSingleton(), g_clientID);
         SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), g_clientID);
-    } else {
-        // Caso contrário (arma sacada, em 3ª pessoa e sem menus abertos), envia os prompts.
+        logger::info("me retorna aqui vei");
+    }
+    if (RE::PlayerCamera::GetSingleton()->IsInThirdPerson() && g_isWeaponDrawn) {
         SkyPromptAPI::SendPrompt(StancesSink::GetSingleton(), g_clientID);
         SkyPromptAPI::SendPrompt(MovesetSink::GetSingleton(), g_clientID);
     }
-   
+    
 
     return RE::BSEventNotifyControl::kContinue;
 }
@@ -258,12 +258,17 @@ RE::BSEventNotifyControl GlobalControl::ActionEventHandler::ProcessEvent(const S
                                                                          RE::BSTEventSource<SKSE::ActionEvent>*) {
     if (a_event && a_event->actor && a_event->actor->IsPlayerRef()) {
         // Jogador comeou a sacar a arma
-        if (a_event->type == SKSE::ActionEvent::Type::kBeginDraw) {
+        if (a_event->type == SKSE::ActionEvent::Type::kBeginDraw &&
+            RE::PlayerCamera::GetSingleton()->IsInThirdPerson()) {
             SKSE::log::info("Arma sacada, mostrando o menu.");
             g_isWeaponDrawn = true;  // Define nosso controle como verdadeiro
             // Envia os prompts para a API, fazendo o menu aparecer
             SkyPromptAPI::SendPrompt(StancesSink::GetSingleton(), g_clientID);
             SkyPromptAPI::SendPrompt(MovesetSink::GetSingleton(), g_clientID);
+        }
+        if (a_event->type == SKSE::ActionEvent::Type::kBeginDraw) {
+            SKSE::log::info("Arma sacada, mostrando o menu.");
+            g_isWeaponDrawn = true;  // Define nosso controle como verdadeiro
         }
         // Jogador terminou de guardar a arma
         else if (a_event->type == SKSE::ActionEvent::Type::kEndSheathe) {
@@ -277,42 +282,44 @@ RE::BSEventNotifyControl GlobalControl::ActionEventHandler::ProcessEvent(const S
     return RE::BSEventNotifyControl::kContinue;
 }
 
-//bool GlobalControl::IsAnyMenuOpen() { 
-//    const auto ui = RE::UI::GetSingleton();
-//    for (const auto a_name : blockedMenus) {
-//        if (ui->IsMenuOpen(a_name)) {
-//            return true;
-//        }
-//    }
-//    return false;
-//}
+bool GlobalControl::IsAnyMenuOpen() { 
+    const auto ui = RE::UI::GetSingleton();
+    for (const auto a_name : blockedMenus) {
+        if (ui->IsMenuOpen(a_name)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 bool GlobalControl::IsWeaponDrawn() { 
-    bool weapon = RE::PlayerCharacter::GetSingleton()->AsActorState()->IsWeaponDrawn();
-        if (weapon) {
+
+    if (RE::PlayerCharacter::GetSingleton()->AsActorState()->IsWeaponDrawn()) {
         return true;
         }
         return false;
 }
 
 bool GlobalControl::IsThirdPerson() { 
-    auto playerCamera = RE::PlayerCamera::GetSingleton();
-    playerCamera->IsInThirdPerson();
-    if (playerCamera){
+    auto playerCam = RE::PlayerCamera::GetSingleton()->IsInFirstPerson();
+    if (!playerCam) {
         return true;
-        }
-    return false; }
+
+    } else {
+        return false;    }
+     }
 
 RE::BSEventNotifyControl GlobalControl::MenuOpen::ProcessEvent(const RE::MenuOpenCloseEvent* event,
                                                                RE::BSTEventSource<RE::MenuOpenCloseEvent>*) {
-    const auto ui = RE::UI::GetSingleton();
-    for (const auto a_name : blockedMenus) {
-        if (ui->IsMenuOpen(a_name)) {
-           IsAnyMenuOpen = true;
-            SkyPromptAPI::RemovePrompt(StancesSink::GetSingleton(), g_clientID);
-            SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), g_clientID);
-            logger::info("abriu menu");
-        }
+
+
+    if (!IsAnyMenuOpen && IsThirdPerson && g_isWeaponDrawn) {
+        SkyPromptAPI::SendPrompt(StancesSink::GetSingleton(), g_clientID);
+        SkyPromptAPI::SendPrompt(MovesetSink::GetSingleton(), g_clientID);
+    } 
+    if (IsAnyMenuOpen && IsThirdPerson) {
+        SkyPromptAPI::RemovePrompt(StancesSink::GetSingleton(), g_clientID);
+        SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), g_clientID);
     }
     
     return RE::BSEventNotifyControl::kContinue;

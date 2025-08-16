@@ -168,7 +168,7 @@ namespace GlobalControl {
         RE::RaceSexMenu::MENU_NAME,
     };
 
-    inline bool IsAnyMenuOpen = false;
+    inline bool IsAnyMenuOpen();
     inline bool IsWeaponDrawn();
     inline bool IsThirdPerson();
 }
