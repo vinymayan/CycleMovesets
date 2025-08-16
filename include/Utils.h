@@ -136,11 +136,6 @@ namespace GlobalControl {
                                               RE::BSTEventSource<SKSE::ActionEvent>*) override;
     };
 
-    struct CameraEvent {
-    public:
-        RE::TESCameraState* oldState;
-        RE::TESCameraState* newState;
-    };
 
     class CameraChange : public RE::BSTEventSink<SKSE::CameraEvent> {
         
@@ -153,4 +148,27 @@ namespace GlobalControl {
                                               RE::BSTEventSource<SKSE::CameraEvent>*) override;
     };
 
+    class MenuOpen : public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
+    public:
+        static MenuOpen* GetSingleton() {
+            static MenuOpen singleton;
+            return &singleton;
+        }
+        RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* event,
+                                              RE::BSTEventSource<RE::MenuOpenCloseEvent>*);
+    };
+
+    inline std::array blockedMenus = {
+        RE::DialogueMenu::MENU_NAME,    RE::JournalMenu::MENU_NAME,    RE::MapMenu::MENU_NAME,
+        RE::StatsMenu::MENU_NAME,       RE::ContainerMenu::MENU_NAME,  RE::InventoryMenu::MENU_NAME,
+        RE::TweenMenu::MENU_NAME,       RE::TrainingMenu::MENU_NAME,   RE::TutorialMenu::MENU_NAME,
+        RE::LockpickingMenu::MENU_NAME, RE::SleepWaitMenu::MENU_NAME,  RE::LevelUpMenu::MENU_NAME,
+        RE::Console::MENU_NAME,         RE::BookMenu::MENU_NAME,       RE::CreditsMenu::MENU_NAME,
+        RE::LoadingMenu::MENU_NAME,     RE::MessageBoxMenu::MENU_NAME, RE::MainMenu::MENU_NAME,
+        RE::RaceSexMenu::MENU_NAME,
+    };
+
+    inline bool IsAnyMenuOpen = false;
+    inline bool IsWeaponDrawn();
+    inline bool IsThirdPerson();
 }

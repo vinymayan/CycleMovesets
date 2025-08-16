@@ -11,7 +11,7 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
     }
 
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
-        SKSE::GetCameraEventSource()->AddEventSink(GlobalControl::CameraChange::GetSingleton);
+        SKSE::GetCameraEventSource()->AddEventSink(GlobalControl::CameraChange::GetSingleton());
     }
 
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
@@ -20,6 +20,11 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
         if (inputDeviceManager) {
             inputDeviceManager->AddEventSink(InputListener::GetSingleton());
             SKSE::log::info("Listener de input registrado com sucesso!");
+        }
+
+        if (auto* ui = RE::UI::GetSingleton(); ui) {
+            logger::info("Adding event sink for dialogue menu auto zoom.");
+            ui->AddEventSink<RE::MenuOpenCloseEvent>(GlobalControl::MenuOpen::GetSingleton());
         }
         GlobalControl::g_clientID = SkyPromptAPI::RequestClientID();
         if (GlobalControl::g_clientID > 0) {
