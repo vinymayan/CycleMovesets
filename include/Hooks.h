@@ -15,6 +15,7 @@ namespace Settings {
     inline int hotkey_segunda;
     inline int hotkey_terceira = 4;
     inline int hotkey_quarta = 5;
+    inline int hotkey_quinta = 6;
 }
 
 // Namespace para a nossa UI

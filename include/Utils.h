@@ -21,45 +21,33 @@ namespace GlobalControl {
 
     // --- DEFINIÇÃO DAS TECLAS E PROMPTS ---
     // Nota: Os números são DirectX Scan Codes. U=21, I=23, O=24.
-    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_1 = {RE::INPUT_DEVICE::kKeyboard,
-                                                                          Settings::hotkey_terceira};
-    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_2 = {RE::INPUT_DEVICE::kKeyboard,
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> Stance_key = {RE::INPUT_DEVICE::kKeyboard,
+                                                                             Settings::hotkey_principal};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> Moveset_key = {RE::INPUT_DEVICE::kKeyboard,
                                                                           Settings::hotkey_segunda};
-    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_3 = {RE::INPUT_DEVICE::kKeyboard,
-                                                                          Settings::hotkey_principal};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> insta_4 = {RE::INPUT_DEVICE::kKeyboard, 5};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_U = {RE::INPUT_DEVICE::kKeyboard, 22};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_I = {RE::INPUT_DEVICE::kKeyboard, 23};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> key_P = {RE::INPUT_DEVICE::kKeyboard, 25};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> stancemenu = {RE::INPUT_DEVICE::kKeyboard, 0x22};
-    const std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> stats = {RE::INPUT_DEVICE::kKeyboard, 44};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> Next_key = {RE::INPUT_DEVICE::kKeyboard,
+                                                                          Settings::hotkey_terceira};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> Reset_key = {RE::INPUT_DEVICE::kKeyboard,
+                                                                           Settings::hotkey_quarta};
+    inline std::pair<RE::INPUT_DEVICE, SkyPromptAPI::ButtonID> Back_key = {RE::INPUT_DEVICE::kKeyboard,
+                                                                            Settings::hotkey_quinta};
 
     // Criamos os prompts. Eles não precisam de texto, pois são apenas listeners.
-    const SkyPromptAPI::Prompt stats_stance("Stance (0/0)", 0, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                            std::span(&stats, 1));
-    const SkyPromptAPI::Prompt stats_moveset("Moveset (0/0)", 1, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                             std::span(&stats, 1));
-    const SkyPromptAPI::Prompt stance_1("Stance", 2, 0, SkyPromptAPI::PromptType::kSinglePress, 0,std::span(&insta_1, 1));
-    const SkyPromptAPI::Prompt stance_2("Stance", 3, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                                std::span(&insta_2, 1));
-    const SkyPromptAPI::Prompt stance_3("Stance", 4, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                                std::span(&insta_3, 1));
-    const SkyPromptAPI::Prompt stance_4("Stance", 5, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                                std::span(&insta_4, 1));
-    const SkyPromptAPI::Prompt stance_5("Stance", 5, 1, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                        std::span(&insta_4, 1));
+
+
     // ActionID 0: Incrementar
-    inline SkyPromptAPI::Prompt prompt_Increment("Next", 4, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                                std::span(&insta_3, 1));
+    inline SkyPromptAPI::Prompt prompt_Increment("Next", 3, 0, SkyPromptAPI::PromptType::kSinglePress, 20,
+                                                std::span(&Next_key, 1));
     // ActionID 1: Resetar
-    inline SkyPromptAPI::Prompt prompt_Reset("Reset", 3, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                            std::span(&insta_2, 1));
+    inline SkyPromptAPI::Prompt prompt_Reset("Reset", 3, 0, SkyPromptAPI::PromptType::kSinglePress, 20,
+                                            std::span(&Reset_key, 1));
     // ActionID 2: Decrementar
-    inline SkyPromptAPI::Prompt prompt_Decrement("Back", 2, 0, SkyPromptAPI::PromptType::kSinglePress, 0,
-                                                std::span(&insta_1, 1));
-    const SkyPromptAPI::Prompt menu_stance("Stance menu", 5, 0, SkyPromptAPI::PromptType::kHoldAndKeep, 0,std::span(&stancemenu, 1));
-    const SkyPromptAPI::Prompt menu_moveset("Moveset menu", 6, 0, SkyPromptAPI::PromptType::kHoldAndKeep, 0,
-                                           std::span(&stancemenu, 1));
+    inline SkyPromptAPI::Prompt prompt_Decrement("Back", 2, 0, SkyPromptAPI::PromptType::kSinglePress, 20,
+                                                 std::span(&Back_key, 1));
+    inline SkyPromptAPI::Prompt menu_stance("Stance menu", 0, 0, SkyPromptAPI::PromptType::kHoldAndKeep, 20,
+                                            std::span(&Stance_key, 1), 0, 600.0);
+    inline SkyPromptAPI::Prompt menu_moveset("Moveset menu", 1, 0, SkyPromptAPI::PromptType::kHoldAndKeep, 20,
+                                             std::span(&Moveset_key, 1),0,1.0);
 
     
     // A definimos como 'inline' aqui mesmo para simplificar e evitar problemas de linker.
@@ -67,28 +55,72 @@ namespace GlobalControl {
         SKSE::log::info("Atualizando hotkeys registradas na SkyPromptAPI...");
 
         // Atribui o novo valor do scan code (a segunda parte do 'pair')
-        insta_1.second = Settings::hotkey_terceira;
-        insta_2.second = Settings::hotkey_segunda;
-        insta_3.second = Settings::hotkey_principal;
+        Stance_key.second = Settings::hotkey_principal;
+        Moveset_key.second = Settings::hotkey_segunda;
+        Next_key.second = Settings::hotkey_terceira;
+        Reset_key.second = Settings::hotkey_quarta;
+        Back_key.second = Settings::hotkey_quinta;
 
  
     }
 
 
     // A classe Sink processa os eventos da API
-    class Sink final : public SkyPromptAPI::PromptSink, public clib_util::singleton::ISingleton<Sink> {
+    class StancesSink final : public SkyPromptAPI::PromptSink, public clib_util::singleton::ISingleton<StancesSink> {
     public:
         // Retorna a lista de prompts que queremos monitorar
         std::span<const SkyPromptAPI::Prompt> GetPrompts() const override;
 
         // Função chamada quando um evento (ex: pressionar tecla) ocorre
         void ProcessEvent(SkyPromptAPI::PromptEvent event) const override;
-
+        mutable bool except = false;
     private:
         // Um array para guardar todos os nossos prompts
-        std::array<SkyPromptAPI::Prompt,7> m_stance = {stats_moveset, stats_stance, stance_1, stance_2,  stance_3, stance_4, menu_stance,};
-        std::array<SkyPromptAPI::Prompt, 6> m_moveset = {
-            stats_moveset, stats_stance, prompt_Increment, prompt_Reset, prompt_Decrement, menu_stance};
+        std::array<SkyPromptAPI::Prompt, 1> prompts = {menu_stance};
+        
+    };
+
+        class StancesChangesSink final : public SkyPromptAPI::PromptSink,
+                                     public clib_util::singleton::ISingleton<StancesChangesSink> {
+
+    public:
+        // Retorna a lista de prompts que queremos monitorar
+        std::span<const SkyPromptAPI::Prompt> GetPrompts() const override;
+
+        // Função chamada quando um evento (ex: pressionar tecla) ocorre
+        void ProcessEvent(SkyPromptAPI::PromptEvent event) const override;
+        mutable bool except = false;
+    private:
+        // Um array para guardar todos os nossos prompts
+        std::array<SkyPromptAPI::Prompt, 2> prompts = {prompt_Increment, prompt_Decrement};
+    };
+
+            // A classe Sink processa os eventos da API
+    class MovesetSink final : public SkyPromptAPI::PromptSink, public clib_util::singleton::ISingleton<MovesetSink> {
+    public:
+        // Retorna a lista de prompts que queremos monitorar
+        std::span<const SkyPromptAPI::Prompt> GetPrompts() const override;
+
+        // Função chamada quando um evento (ex: pressionar tecla) ocorre
+        void ProcessEvent(SkyPromptAPI::PromptEvent event) const override;
+        mutable bool except = false;
+    private:
+        // Um array para guardar todos os nossos prompts
+        std::array<SkyPromptAPI::Prompt, 1> prompts = {menu_moveset};
+    };
+
+    class MovesetChangesSink final : public SkyPromptAPI::PromptSink,
+                                     public clib_util::singleton::ISingleton<MovesetChangesSink> {
+    public:
+        // Retorna a lista de prompts que queremos monitorar
+        std::span<const SkyPromptAPI::Prompt> GetPrompts() const override;
+
+        // Função chamada quando um evento (ex: pressionar tecla) ocorre
+        void ProcessEvent(SkyPromptAPI::PromptEvent event) const override;
+        mutable bool except = false;
+    private:
+        // Um array para guardar todos os nossos prompts
+        std::array<SkyPromptAPI::Prompt, 2> prompts = {prompt_Increment, prompt_Decrement};
     };
 
     // <-- NOVO: Classe para ouvir eventos de sacar/guardar arma -->
@@ -103,4 +135,22 @@ namespace GlobalControl {
         RE::BSEventNotifyControl ProcessEvent(const SKSE::ActionEvent* a_event,
                                               RE::BSTEventSource<SKSE::ActionEvent>*) override;
     };
+
+    struct CameraEvent {
+    public:
+        RE::TESCameraState* oldState;
+        RE::TESCameraState* newState;
+    };
+
+    class CameraChange : public RE::BSTEventSink<SKSE::CameraEvent> {
+        
+    public:
+        static CameraChange* GetSingleton() {
+            static CameraChange singleton;
+            return &singleton;
+        }
+        RE::BSEventNotifyControl ProcessEvent(const SKSE::CameraEvent* a_event,
+                                              RE::BSTEventSource<SKSE::CameraEvent>*) override;
+    };
+
 }

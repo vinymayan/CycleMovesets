@@ -2,7 +2,6 @@
 #include <format>
 #include <fstream>
 #include <string>
-
 #include "Events.h"
 #include "SKSEMCP/SKSEMenuFramework.hpp"
 #include "rapidjson/document.h"
@@ -10,6 +9,8 @@
 #include "rapidjson/filereadstream.h"
 #include "rapidjson/filewritestream.h"
 #include "rapidjson/prettywriter.h"
+
+
 
 AnimationManager& AnimationManager::GetSingleton() {
     static AnimationManager instance;
@@ -452,87 +453,120 @@ void AnimationManager::DrawAnimationManager() {
                                                               ImGui::GetStyle()->Colors[ImGuiCol_TextDisabled]);
                                     }
 
-                                    ImGui::Checkbox("##subselect", &subInstance.isSelected);
-                                    ImGui::SameLine();
+                                    // NOVO: Define as flags da tabela. SizingFixedFit permite colunas de tamanho fixo.
+                                    ImGuiTableFlags flags =
+                                        ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV;
+                                    if (ImGui::BeginTable("sub_moveset_layout", 2, flags)) {
+                                        // NOVO: Define as colunas. A primeira estica, a segunda é fixa.
+                                        // O tamanho da segunda coluna é calculado para caber todos os checkboxes.
+                                        float checkbox_width =
+                                            ImGui::GetFrameHeightWithSpacing() +1000;  // 11 checkboxes
+                                        ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthStretch);
+                                        ImGui::TableSetupColumn("Conditions", ImGuiTableColumnFlags_WidthFixed,
+                                                                checkbox_width);
 
-                                    std::string label;
+                                        // --- COLUNA 1: Informações Principais ---
+                                        ImGui::TableNextColumn();
 
-                                    // A lógica de contagem foi substituída pela busca no map
-                                    if (modInstance.isSelected && subInstance.isSelected) {
-                                        if (playlistNumbers.count(&subInstance)) {  // É um "Pai" com número calculado
-                                            label = std::format("[{}] {}", playlistNumbers.at(&subInstance),
-                                                                originSubAnim.name);
-                                        } else if (parentNumbersForChildren.count(&subInstance)) {  // É um "Filho"
-                                            int parentNum = parentNumbersForChildren.at(&subInstance);
-                                            label = std::format(" -> [{}] {}", parentNum, originSubAnim.name);
-                                        } else {  // Caso não esteja na contagem (é filho sem pai ou algo inesperado)
+                                        ImGui::Checkbox("##subselect", &subInstance.isSelected);
+                                        ImGui::SameLine();
+
+                                        // NOVO: Agrupa o nome e as tags para que o Drag and Drop funcione em ambos.
+                                        ImGui::BeginGroup();
+
+                                        // Lógica para criar a label principal (igual ao código original)
+                                        std::string label;
+                                        if (modInstance.isSelected && subInstance.isSelected) {
+                                            if (playlistNumbers.count(&subInstance)) {
+                                                label = std::format("[{}] {}", playlistNumbers.at(&subInstance),
+                                                                    originSubAnim.name);
+                                            } else if (parentNumbersForChildren.count(&subInstance)) {
+                                                int parentNum = parentNumbersForChildren.at(&subInstance);
+                                                label = std::format(" -> [{}] {}", parentNum, originSubAnim.name);
+                                            } else {
+                                                label = originSubAnim.name;
+                                            }
+                                        } else {
                                             label = originSubAnim.name;
                                         }
-                                    } else {
-                                        label = originSubAnim.name;  // Desativado, mostra sem número
-                                    }
-
-                                    // Adiciona o "by: author" se for de um mod diferente
-                                    if (subInstance.sourceModIndex != modInstance.sourceModIndex) {
-                                        label += std::format(" (by: {})", originMod.name);
-                                    }
-
-                                    ImVec2 regionAvail;
-                                    ImGui::GetContentRegionAvail(&regionAvail);
-                                    ImGui::Selectable(label.c_str(), false, 0, ImVec2(regionAvail.x - regionAvail.x/2));
-                                    // --- INÍCIO DA EXIBIÇÃO DAS TAGS ---
-                                    if (originSubAnim.attackCount > 0) {
-                                        ImGui::SameLine();
-                                        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "[Attack: %d]",
-                                                           originSubAnim.attackCount);
-                                    }
-                                    if (originSubAnim.powerAttackCount > 0) {
-                                        ImGui::SameLine();
-                                        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "[PowerAttack: %d]",
-                                                           originSubAnim.powerAttackCount);
-                                    }
-                                    if (originSubAnim.hasIdle) {
-                                        ImGui::SameLine();
-                                        ImGui::TextColored(ImVec4(0.4f, 0.6f, 1.0f, 1.0f), "[Idle]");
-                                    }
-                                    // --- FIM DA EXIBIÇÃO DAS TAGS ---
-
-
-                                    // Drag and Drop para SUB-MOVESETS
-                                    if (ImGui::BeginDragDropSource()) {
-                                        ImGui::SetDragDropPayload("DND_SUB_INSTANCE", &sub_j, sizeof(size_t));
-                                        ImGui::Text("Mover %s", originSubAnim.name.c_str());
-                                        ImGui::EndDragDropSource();
-                                    }
-                                    if (ImGui::BeginDragDropTarget()) {
-                                        if (const ImGuiPayload* payload =
-                                                ImGui::AcceptDragDropPayload("DND_SUB_INSTANCE")) {
-                                            size_t source_idx = *(const size_t*)payload->Data;
-                                            std::swap(modInstance.subAnimationInstances[source_idx],
-                                                      modInstance.subAnimationInstances[sub_j]);
+                                        if (subInstance.sourceModIndex != modInstance.sourceModIndex) {
+                                            label += std::format(" (by: {})", originMod.name);
                                         }
-                                    }
 
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("F", &subInstance.pFront);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("B", &subInstance.pBack);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("L", &subInstance.pLeft);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("R", &subInstance.pRight);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("FR", &subInstance.pFrontRight);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("FL", &subInstance.pFrontLeft);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("BR", &subInstance.pBackRight);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("BL", &subInstance.pBackLeft);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("Rnd", &subInstance.pRandom);
-                                    ImGui::SameLine();
-                                    ImGui::Checkbox("Dodge", &subInstance.pDodge);
+                                        // ALTERADO: Desenhamos o texto da label. Não usamos mais Selectable aqui.
+                                        ImGui::Selectable(label.c_str(), false, 0,
+                                                          ImVec2(0, ImGui::GetTextLineHeight()));
+
+                                          // CORREÇÃO: O código de Drag and Drop AGORA funciona, pois está atrelado ao
+                                        // Selectable acima.
+                                        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+                                            ImGui::SetDragDropPayload("DND_SUB_INSTANCE", &sub_j, sizeof(size_t));
+                                            ImGui::Text("Mover %s", originSubAnim.name.c_str());
+                                            ImGui::EndDragDropSource();
+                                        }
+                                        if (ImGui::BeginDragDropTarget()) {
+                                            if (const ImGuiPayload* payload =
+                                                    ImGui::AcceptDragDropPayload("DND_SUB_INSTANCE")) {
+                                                size_t source_idx = *(const size_t*)payload->Data;
+                                                std::swap(modInstance.subAnimationInstances[source_idx],
+                                                          modInstance.subAnimationInstances[sub_j]);
+                                            }
+                                        }
+        
+
+                                        // ALTERADO: As tags agora são desenhadas abaixo da label, dentro do mesmo
+                                        // grupo. Elas usam SameLine() entre si para ficarem na mesma linha.
+                                        bool firstTag = true;
+                                        if (originSubAnim.attackCount > 0) {
+                                            if (!firstTag) ImGui::SameLine();
+                                            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "[HitCombo: %d]",
+                                                               originSubAnim.attackCount);
+                                            firstTag = false;
+                                        }
+                                        if (originSubAnim.powerAttackCount > 0) {
+                                            if (!firstTag) ImGui::SameLine();
+                                            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "[PA: %d]",
+                                                               originSubAnim.powerAttackCount);
+                                            firstTag = false;
+                                        }
+                                        if (originSubAnim.hasIdle) {
+                                            if (!firstTag) ImGui::SameLine();
+                                            ImGui::TextColored(ImVec4(0.4f, 0.6f, 1.0f, 1.0f), "[Idle]");
+                                            firstTag = false;
+                                        }
+
+                                        ImGui::EndGroup();  // Fim do grupo de Drag and Drop
+
+
+                                        // --- COLUNA 2: Checkboxes de Condição ---
+                                        ImGui::TableNextColumn();
+
+                                        // MOVIDO: Todos os checkboxes agora estão na segunda coluna.
+                                        // Eles usam SameLine() para se alinharem horizontalmente DENTRO da coluna.
+                                        ImGui::Checkbox("F", &subInstance.pFront);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("B", &subInstance.pBack);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("L", &subInstance.pLeft);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("R", &subInstance.pRight);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("FR", &subInstance.pFrontRight);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("FL", &subInstance.pFrontLeft);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("BR", &subInstance.pBackRight);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("BL", &subInstance.pBackLeft);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("Rnd", &subInstance.pRandom);
+                                        ImGui::SameLine();
+                                        ImGui::Checkbox("Movement", &subInstance.pDodge);
+
+                                        ImGui::EndTable();
+                                    }
+                                    // --- FIM DA NOVA ESTRUTURA COM TABELA ---
+
 
                                     if (isChildDisabled) {
                                         ImGui::PopStyleColor();

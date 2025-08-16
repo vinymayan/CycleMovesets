@@ -1,4 +1,4 @@
-#include "Manager.h"  // Precisamos do nosso gerenciador de dados
+#include "Manager.h"  
 #include "Events.h"
 #include "Settings.h"
 #include "Hooks.h"
@@ -6,9 +6,8 @@
 #include "rapidjson/document.h"
 #include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
-#include <fstream> // Para ler e escrever arquivos
-#include <filesystem> // Para criar diretórios (C++17+)
-// ALTERAÇÃO AQUI: Incluímos o cabeçalho do framework
+#include <fstream>
+#include <filesystem> 
 #include "SKSEMCP/SKSEMenuFramework.hpp"
 
 constexpr const char* settings_path = "Data/SKSE/Plugins/CycleMoveset_Settings.json";

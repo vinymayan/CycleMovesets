@@ -1,5 +1,6 @@
 #include "RE/A/Actor.h"
 #include "Serialization.h"
+#include "Utils.h"
 
 // A variável global que você quer alterar
 
@@ -121,3 +122,167 @@ void InputListener::UpdateDirectionalState() {
         // DirecionalCycleMoveset);
     }
 }
+
+std::span<const SkyPromptAPI::Prompt> GlobalControl::StancesSink::GetPrompts() const {
+    return prompts; }
+
+void GlobalControl::StancesSink::ProcessEvent(SkyPromptAPI::PromptEvent event) const {
+    auto eventype = event.type;
+    if (!g_isWeaponDrawn) {
+        return;
+    }
+
+    switch (eventype) {
+        case SkyPromptAPI::kAccepted:
+                if(!except) {
+                except = true;
+                SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), GlobalControl::g_clientID);
+                if (!SkyPromptAPI::SendPrompt(StancesChangesSink::GetSingleton(), GlobalControl::g_clientID)) {
+                    logger::error("Skyprompt didnt worked Stances Changes Sink");
+                }
+                break;
+            }
+                
+        case SkyPromptAPI::kUp:
+            except = false;
+            SkyPromptAPI::RemovePrompt(StancesChangesSink::GetSingleton(), GlobalControl::g_clientID);
+            if (!SkyPromptAPI::SendPrompt(MovesetSink::GetSingleton(), GlobalControl::g_clientID)) {
+                logger::error("Skyprompt didnt worked Moveset Sink");
+            }
+            break;        
+    }
+
+}
+
+std::span<const SkyPromptAPI::Prompt> GlobalControl::StancesChangesSink::GetPrompts() const {
+
+    return prompts; }
+
+void GlobalControl::StancesChangesSink::ProcessEvent(SkyPromptAPI::PromptEvent event) const {}
+
+std::span<const SkyPromptAPI::Prompt> GlobalControl::MovesetSink::GetPrompts() const {
+    return prompts; }
+
+void GlobalControl::MovesetSink::ProcessEvent(SkyPromptAPI::PromptEvent event) const {
+    auto eventype = event.type;
+    if (!g_isWeaponDrawn) {
+        return;
+    }
+    switch (eventype) {
+
+        case SkyPromptAPI::kAccepted:
+            if (!except) {
+                except = true;
+                SkyPromptAPI::RemovePrompt(StancesSink::GetSingleton(), GlobalControl::g_clientID);
+                if (!SkyPromptAPI::SendPrompt(MovesetChangesSink::GetSingleton(), GlobalControl::g_clientID)) {
+                    logger::error("Skyprompt didnt worked Stances Changes Sink");
+                }
+                break;
+            }
+
+        case SkyPromptAPI::kDeclined:
+            RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", 0);
+            break;
+
+        case SkyPromptAPI::kUp:
+            except = false;
+            SkyPromptAPI::RemovePrompt(MovesetChangesSink::GetSingleton(), GlobalControl::g_clientID);
+            SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), GlobalControl::g_clientID);
+            if (!SkyPromptAPI::SendPrompt(StancesSink::GetSingleton(), GlobalControl::g_clientID)) {
+                logger::error("Skyprompt didnt worked Moveset Sink");
+            }
+            if (!SkyPromptAPI::SendPrompt(MovesetSink::GetSingleton(), GlobalControl::g_clientID)) {
+                logger::error("Skyprompt didnt worked Moveset Sink");
+            }
+            break;
+    }
+}
+
+std::span<const SkyPromptAPI::Prompt> GlobalControl::MovesetChangesSink::GetPrompts() const { 
+    return prompts; }
+    
+
+void GlobalControl::MovesetChangesSink::ProcessEvent(SkyPromptAPI::PromptEvent event) const {
+    static float cycleplayer = 0.0f;
+    switch (event.prompt.eventID) {
+        case 2:  // Moveset anterior
+            cycleplayer -= 1.0f;
+            logger::info("Variavel Global decrementada para: {}", cycleplayer);
+            RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+            RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+            break;
+
+        case 3:  // Proximo moveset
+            cycleplayer += 1.0f;
+            logger::info("Variavel Global incrementada para: {}", cycleplayer);
+            RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+            RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+            break;
+
+        case 5:  // Resetar (Tecla I)
+            cycleplayer = 0.0f;
+            logger::info("Variavel Global resetada para 0.");
+            RE::DebugNotification(std::format("Variavel: {:.0f}", cycleplayer).c_str());
+            RE::PlayerCharacter::GetSingleton()->SetGraphVariableFloat("testarone", cycleplayer);
+            break;
+
+    }
+}
+
+RE::BSEventNotifyControl GlobalControl::CameraChange::ProcessEvent(const SKSE::CameraEvent* a_event,
+                                                          RE::BSTEventSource<SKSE::CameraEvent>*) {
+    // Verificação de segurança para garantir que o evento não é nulo.
+    auto playerCamera = RE::PlayerCamera::GetSingleton();
+    playerCamera->IsInThirdPerson();
+    if (!a_event) {
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    // Obtém a instância (singleton) da câmera do jogador.
+    if (!playerCamera) {
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    // Verifica se a câmera está no estado de terceira pessoa.
+    if (playerCamera->IsInThirdPerson()) {
+        SkyPromptAPI::RemovePrompt(StancesSink::GetSingleton(), g_clientID);
+        SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), g_clientID);
+        logger:: info("Camera is in Third Person. (1)");
+
+    } else {
+
+        logger::info("Camera is in First Person. (0)");
+    }
+
+    return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl GlobalControl::ActionEventHandler::ProcessEvent(const SKSE::ActionEvent* a_event,
+                                                                         RE::BSTEventSource<SKSE::ActionEvent>*) {
+    
+    auto player_cam = RE::PlayerCamera::GetSingleton();
+    player_cam->IsInThirdPerson();
+    if (!player_cam->IsInThirdPerson()) {
+        return RE::BSEventNotifyControl::kContinue;
+    }
+    if (a_event && a_event->actor && a_event->actor->IsPlayerRef()) {
+        // Jogador comeou a sacar a arma
+        if (a_event->type == SKSE::ActionEvent::Type::kBeginDraw) {
+            SKSE::log::info("Arma sacada, mostrando o menu.");
+            g_isWeaponDrawn = true;  // Define nosso controle como verdadeiro
+            // Envia os prompts para a API, fazendo o menu aparecer
+            SkyPromptAPI::SendPrompt(StancesSink::GetSingleton(), g_clientID);
+            SkyPromptAPI::SendPrompt(MovesetSink::GetSingleton(), g_clientID);
+        }
+        // Jogador terminou de guardar a arma
+        else if (a_event->type == SKSE::ActionEvent::Type::kEndSheathe) {
+            SKSE::log::info("Arma guardada, escondendo o menu.");
+            g_isWeaponDrawn = false;  // Define nosso controle como falso
+            // Limpa os prompts da API, fazendo o menu desaparecer
+            SkyPromptAPI::RemovePrompt(StancesSink::GetSingleton(), g_clientID);
+            SkyPromptAPI::RemovePrompt(MovesetSink::GetSingleton(), g_clientID);
+        }
+    }
+    return RE::BSEventNotifyControl::kContinue;
+}
+
